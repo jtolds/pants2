@@ -1,0 +1,41 @@
+# comments
+
+program := <statement>*
+
+statement := IF <expression> <statementblock>
+           | ELSE <statementblock>
+           | VAR <variable> (, <variable>)*
+           | <variable> = <expression>
+           | LOOP <statementblock>
+           | WHILE <expression> <statementblock>
+           | IMPORT <string> [WITH PREFIX <variable>]
+           | UNIMPORT <string>
+           | UNDEFINE <variable> (, <variable>)*
+           | EXPORT <variable> (, <variable>)*
+           | FUNC <variable> `(`[<variable> (, <variable>)*]`)` <statementblock>
+           | PROC <variable> [<variable> (, <variable>)*] <statementblock>
+           | <variable> [<expression> (, <expression>)*]
+           | BREAK | NEXT | DONE
+           | RETURN <expression>
+
+statementblock := { <statement>* }
+
+expression := <variable>
+						| <string>
+						| <integer>
+						| <bool>
+						| <test>
+						| `(`<expression>`)`
+						| NOT <expression>
+						| <expression>[<expression>]
+
+test := <expression> <cmpop> <expression>
+
+cmpop := ==
+			 | !=
+			 | <
+			 | <=
+			 | >
+			 | >=
+			 | AND
+			 | OR

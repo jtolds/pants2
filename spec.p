@@ -22,11 +22,16 @@ ELSE {
 
 }
 
+var = val
 
 LOOP {
-
   BREAK
   NEXT
+}
+
+WHILE <expr> {
+	BREAK
+	NEXT
 }
 
 IMPORT <mod>
@@ -40,9 +45,11 @@ FUNC name(<var>, <var>) {
   RETURN <expr>
 }
 
-STATEMENT name var, var {
+PROC name var, var {
   DONE
 }
+
+CALL func
 
 strings
 integers
@@ -50,6 +57,12 @@ bools
 AND
 OR
 parenthesis
+==
+!=
+<
+<=
+>
+>=
 
 var[index]
 
