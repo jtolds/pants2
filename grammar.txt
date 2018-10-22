@@ -14,28 +14,31 @@ statement := IF <expression> <statementblock>
            | EXPORT <variable> (, <variable>)*
            | FUNC <variable> `(`[<variable> (, <variable>)*]`)` <statementblock>
            | PROC <variable> [<variable> (, <variable>)*] <statementblock>
-           | <variable> [<expression> (, <expression>)*]
+           | <expression> [<expression> (, <expression>)*]
            | BREAK | NEXT | DONE
            | RETURN <expression>
 
-statementblock := { <statement>* }
+statementblock := { <program> }
 
 expression := <variable>
 						| <string>
 						| <integer>
 						| <bool>
-						| <test>
+						| <expression> <op> <expression>
 						| `(`<expression>`)`
 						| NOT <expression>
 						| <expression>[<expression>]
 
-test := <expression> <cmpop> <expression>
-
-cmpop := ==
-			 | !=
-			 | <
-			 | <=
-			 | >
-			 | >=
-			 | AND
-			 | OR
+op := ==
+	  | !=
+	  | <
+	  | <=
+	  | >
+	  | >=
+	  | AND
+	  | OR
+	  | +
+	  | -
+	  | *
+	  | %
+	  | /

@@ -21,6 +21,11 @@ func NewSyntaxError(lineno, charpos int, line string,
 	}
 }
 
+func NewSyntaxErrorFromToken(token *Token, line string,
+	format string, args ...interface{}) *SyntaxError {
+	return NewSyntaxError(token.Lineno, token.Start, line, format, args...)
+}
+
 func (e *SyntaxError) Error() string {
 	return fmt.Sprintf("Syntax error on line %d, character %d: %s",
 		e.lineno, e.charpos+1, e.msg)
