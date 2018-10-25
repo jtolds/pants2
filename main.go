@@ -21,23 +21,24 @@ func handleErr(err error) {
 }
 
 func main() {
-	p := NewParser("<input>")
-	ls := NewReaderLineSource(os.Stdin, func() error {
+	ts := NewTokenSource(NewReaderLineSource("<stdin>", os.Stdin, func() error {
 		_, err := fmt.Printf("> ")
 		return err
-	})
+	}))
 	for {
-		stmt, err := p.ParseNext(ls)
+		stmt, err := ParseStatement(ts)
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
 			handleErr(err)
+			continue
 		}
 		handleErr(Run(stmt))
 	}
 }
 
 func Run(stmt Stmt) error {
-	panic("TODO")
+	_, err := fmt.Printf("%#v\n", stmt)
+	return err
 }

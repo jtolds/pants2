@@ -2,11 +2,12 @@ package main
 
 import (
 	"io"
+	"strings"
 	"unicode"
 )
 
 type Token struct {
-	Lineno int
+	Line   *Line
 	Start  int
 	Length int
 	Type   string
@@ -14,15 +15,15 @@ type Token struct {
 }
 
 type Tokenizer struct {
-	lineno  int
+	line    *Line
 	chars   []rune
 	charpos int
 }
 
-func NewTokenizer(lineno int, line string) *Tokenizer {
+func NewTokenizer(line *Line) *Tokenizer {
 	return &Tokenizer{
-		lineno: lineno,
-		chars:  []rune(line),
+		line:  line,
+		chars: []rune(line.Line),
 	}
 }
 
@@ -36,7 +37,7 @@ func (t *Tokenizer) Next() (*Token, error) {
 	case ',', '{', '}', '[', ']', '(', ')', ';', '+', '-', '*', '/', '%':
 		t.charpos += 1
 		return &Token{
-			Lineno: t.lineno,
+			Line:   t.line,
 			Start:  t.charpos - 1,
 			Length: 1,
 			Type:   string(t.chars[t.charpos-1])}, nil
@@ -49,18 +50,18 @@ func (t *Tokenizer) Next() (*Token, error) {
 			t.charpos += 1
 		}
 		return &Token{
-			Lineno: t.lineno,
+			Line:   t.line,
 			Start:  start,
 			Length: t.charpos - start,
 			Type:   string(t.chars[start:t.charpos])}, nil
 	case '!':
 		if t.charpos+1 >= len(t.chars) || t.chars[t.charpos+1] != '=' {
-			return nil, NewSyntaxError(t.lineno, t.charpos, string(t.chars),
+			return nil, NewSyntaxError(t.line, t.charpos,
 				"Unexpected exclamation point. Did you mean \"!=\"?")
 		}
 		t.charpos += 2
 		return &Token{
-			Lineno: t.lineno,
+			Line:   t.line,
 			Start:  t.charpos - 2,
 			Length: 2,
 			Type:   "!="}, nil
@@ -73,27 +74,27 @@ func (t *Tokenizer) Next() (*Token, error) {
 			t.chars[t.charpos] == '.') {
 			if t.chars[t.charpos] == '.' {
 				if decimal {
-					return nil, NewSyntaxError(t.lineno, t.charpos,
-						string(t.chars), "Unexpected second decimal point")
+					return nil, NewSyntaxError(t.line, t.charpos,
+						"Unexpected second decimal point")
 				}
 				decimal = true
 			}
 			t.charpos += 1
 		}
 		if decimal && t.charpos-1 == start {
-			return nil, NewSyntaxError(t.lineno, t.charpos-1,
-				string(t.chars), "Number expected before or after decimal point")
+			return nil, NewSyntaxError(t.line, t.charpos-1,
+				"Number expected before or after decimal point")
 		}
 		if t.charpos < len(t.chars) && unicode.IsLetter(t.chars[t.charpos]) {
-			return nil, NewSyntaxError(t.lineno, t.charpos,
-				string(t.chars), "Unexpected letter after number")
+			return nil, NewSyntaxError(t.line, t.charpos,
+				"Unexpected letter after number")
 		}
 		if t.charpos < len(t.chars) && t.chars[t.charpos] == '_' {
-			return nil, NewSyntaxError(t.lineno, t.charpos,
-				string(t.chars), "Unexpected underscore after number")
+			return nil, NewSyntaxError(t.line, t.charpos,
+				"Unexpected underscore after number")
 		}
 		return &Token{
-			Lineno: t.lineno,
+			Line:   t.line,
 			Start:  start,
 			Length: t.charpos - start,
 			Type:   "number",
@@ -108,21 +109,46 @@ func (t *Tokenizer) Next() (*Token, error) {
 				map[rune]bool{'.': true, '_': true}[t.chars[t.charpos]]) {
 			t.charpos += 1
 		}
-		return &Token{
-			Lineno: t.lineno,
-			Start:  start,
-			Length: t.charpos - start,
-			Type:   "variable",
-			Repr:   string(t.chars[start:t.charpos])}, nil
+		name := string(t.chars[start:t.charpos])
+		switch name {
+		case "if", "IF", "else", "ELSE", "var", "VAR", "loop", "LOOP",
+			"while", "WHILE", "import", "IMPORT", "unimport", "UNIMPORT",
+			"undefine", "UNDEFINE", "export", "EXPORT", "func", "FUNC",
+			"proc", "PROC", "break", "BREAK", "next", "NEXT", "done", "DONE",
+			"return", "RETURN", "and", "AND", "or", "OR", "not", "NOT":
+			return &Token{
+				Line:   t.line,
+				Start:  start,
+				Length: t.charpos - start,
+				Type:   "keyword",
+				Repr:   strings.ToLower(name),
+			}, nil
+		case "true", "TRUE", "false", "FALSE":
+			return &Token{
+				Line:   t.line,
+				Start:  start,
+				Length: t.charpos - start,
+				Type:   "bool",
+				Repr:   strings.ToLower(name),
+			}, nil
+		default:
+			return &Token{
+				Line:   t.line,
+				Start:  start,
+				Length: t.charpos - start,
+				Type:   "variable",
+				Repr:   name,
+			}, nil
+		}
 	}
 
-	return nil, NewSyntaxError(t.lineno, t.charpos, string(t.chars),
+	return nil, NewSyntaxError(t.line, t.charpos,
 		"Unexpected character: %#v", string(t.chars[t.charpos]))
 }
 
 func (t *Tokenizer) parseString() (*Token, error) {
 	if t.chars[t.charpos] != '"' {
-		return nil, NewSyntaxError(t.lineno, t.charpos, string(t.chars),
+		return nil, NewSyntaxError(t.line, t.charpos,
 			"String expected. Found %#v instead.", string(t.chars[t.charpos]))
 	}
 	start := t.charpos
@@ -136,7 +162,7 @@ func (t *Tokenizer) parseString() (*Token, error) {
 			switch t.chars[t.charpos] {
 			case '\\', '"', 'n', 't', 'x':
 			default:
-				return nil, NewSyntaxError(t.lineno, t.charpos-1, string(t.chars),
+				return nil, NewSyntaxError(t.line, t.charpos-1,
 					"String escape value unknown: \\%v.\n"+
 						"Expected one of \\\\, \\\", \\n, \\t, or \\x",
 					string(t.chars[t.charpos]))
@@ -146,7 +172,7 @@ func (t *Tokenizer) parseString() (*Token, error) {
 		if t.chars[t.charpos] == '"' {
 			t.charpos += 1
 			return &Token{
-				Lineno: t.lineno,
+				Line:   t.line,
 				Start:  start,
 				Length: t.charpos - start,
 				Type:   "string",
@@ -154,7 +180,7 @@ func (t *Tokenizer) parseString() (*Token, error) {
 			}, nil
 		}
 	}
-	return nil, NewSyntaxError(t.lineno, start, string(t.chars),
+	return nil, NewSyntaxError(t.line, start,
 		"String started but not ended.")
 }
 
@@ -164,8 +190,8 @@ func (t *Tokenizer) skipWhitespace() {
 	}
 }
 
-func Tokenize(lineno int, line string) (rv []*Token, err error) {
-	tok := NewTokenizer(lineno, line)
+func Tokenize(line *Line) (rv []*Token, err error) {
+	tok := NewTokenizer(line)
 	for {
 		t, err := tok.Next()
 		if t != nil {
@@ -173,9 +199,50 @@ func Tokenize(lineno int, line string) (rv []*Token, err error) {
 		}
 		if err != nil {
 			if err == io.EOF {
+				rv = append(rv, &Token{
+					Line:   line,
+					Start:  len(line.Line),
+					Length: 1,
+					Type:   "newline",
+				})
 				return rv, nil
 			}
 			return rv, err
 		}
 	}
+}
+
+type TokenSource struct {
+	ls     LineSource
+	tokens []*Token
+	pushed []*Token
+}
+
+func NewTokenSource(ls LineSource) *TokenSource {
+	return &TokenSource{ls: ls}
+}
+
+func (t *TokenSource) NextToken() (rv *Token, err error) {
+	if len(t.pushed) > 0 {
+		last := len(t.pushed) - 1
+		rv, t.pushed = t.pushed[last], t.pushed[:last]
+		return rv, nil
+	}
+	if len(t.tokens) == 0 {
+		line, err := t.ls.NextLine()
+		if err != nil {
+			return nil, err
+		}
+		tokens, err := Tokenize(line)
+		if err != nil {
+			return nil, err
+		}
+		t.tokens = tokens
+	}
+	rv, t.tokens = t.tokens[0], t.tokens[1:]
+	return rv, nil
+}
+
+func (t *TokenSource) Push(tok *Token) {
+	t.pushed = append(t.pushed, tok)
 }
