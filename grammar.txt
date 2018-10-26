@@ -28,6 +28,7 @@ expression := <variable>
 						| <expression> <op> <expression>
 						| `(`<expression>`)`
 						| NOT <expression>
+						| - <expression>
 						| <expression>[<expression>]
 						| <expression>`(`[<expression> (, <expression>)*]`)`
 

@@ -14,6 +14,7 @@ type Line struct {
 }
 
 type LineSource interface {
+	Pos() (filename string, lineno int)
 	NextLine() (line *Line, err error)
 }
 
@@ -57,4 +58,8 @@ func (ls *ReaderLineSource) NextLine() (*Line, error) {
 		Filename: ls.filename,
 		Lineno:   ls.lineno,
 		Line:     strings.TrimRightFunc(line, unicode.IsSpace)}, nil
+}
+
+func (ls *ReaderLineSource) Pos() (string, int) {
+	return ls.filename, ls.lineno
 }

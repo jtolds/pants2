@@ -39,6 +39,6 @@ func main() {
 }
 
 func Run(stmt Stmt) error {
-	_, err := fmt.Printf("%#v\n", stmt)
+	_, err := fmt.Print(stmt)
 	return err
 }

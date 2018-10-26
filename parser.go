@@ -1,24 +1,31 @@
 package main
 
+import (
+	"io"
+	"strconv"
+)
+
 func ParseStatement(tokens *TokenSource) (stmt Stmt, err error) {
 	var token *Token
+loop:
 	for {
 		token, err = tokens.NextToken()
 		if err != nil {
 			return nil, err
 		}
-
-		if token.Type != "newline" && token.Type != ";" {
-			break
+		switch token.Type {
+		case "eof":
+			return nil, io.EOF
+		case "newline", ";":
+		default:
+			break loop
 		}
 	}
 
 	if token.Type == "keyword" {
-		switch token.Repr {
+		switch token.Val {
 		case "if":
 			return parseIf(token, tokens)
-		case "else":
-			return parseElse(token, tokens)
 		case "var":
 			return parseVar(token, tokens)
 		case "loop":
@@ -56,19 +63,185 @@ func ParseStatement(tokens *TokenSource) (stmt Stmt, err error) {
 			return parseAssignment(token, tokens)
 		}
 		tokens.Push(nextToken)
-		return parseVarProcCall(token, tokens)
+		tokens.Push(token)
+		return parseProcCall(tokens)
 	}
 
 	if token.Type == "(" {
-		return parseExprProcCall(token, tokens)
+		tokens.Push(token)
+		return parseProcCall(tokens)
 	}
 
 	return nil, NewSyntaxErrorFromToken(token,
 		"Unexpected token %#v. Expecting statement.", token.Type)
 }
 
-func parseExpression(tokens *TokenSource) (Expr, error) {
-	panic("TODO")
+func parseExprOrder1(tokens *TokenSource) (Expr, error) {
+	tok, err := tokens.NextToken()
+	if err != nil {
+		return nil, err
+	}
+	switch tok.Type {
+	case "variable":
+		return &ExprVar{Token: tok, Var: &Var{Token: tok}}, nil
+	case "string":
+		return &ExprString{Token: tok, Val: tok.Val}, nil
+	case "int":
+		val, err := strconv.ParseInt(tok.Val, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		return &ExprInt{Token: tok, Val: val}, nil
+	case "float":
+		val, err := strconv.ParseFloat(tok.Val, 64)
+		if err != nil {
+			return nil, err
+		}
+		return &ExprFloat{Token: tok, Val: val}, nil
+	case "bool":
+		return &ExprBool{Token: tok, Val: tok.Val == "true"}, nil
+	case "(":
+		expr, err := parseExpression(tokens, true)
+		if err != nil {
+			return nil, err
+		}
+		end, err := tokens.NextToken()
+		if err != nil {
+			return nil, err
+		}
+		if end.Type != ")" {
+			return nil, NewSyntaxErrorFromToken(end,
+				"Unexpected token %#v. Expecting closing parenthesis.", end.Type)
+		}
+		return expr, nil
+	default:
+		return nil, NewSyntaxErrorFromToken(
+			tok, "Unexpected token %#v.", tok.Type)
+	}
+}
+
+func parseExprOrder2(tokens *TokenSource) (Expr, error) {
+	val, err := parseExprOrder1(tokens)
+	if err != nil {
+		return nil, err
+	}
+	tok, err := tokens.NextToken()
+	if err != nil {
+		return nil, err
+	}
+	switch tok.Type {
+	case "[": // index
+		idx, err := parseExpression(tokens, true)
+		if err != nil {
+			return nil, err
+		}
+		end, err := tokens.NextToken()
+		if err != nil {
+			return nil, err
+		}
+		if end.Type != "]" {
+			return nil, NewSyntaxErrorFromToken(end,
+				"Unexpected token %#v. Expecting closing brace \"]\".", end.Type)
+		}
+		return &ExprIndex{
+			Token:  tok,
+			Object: val,
+			Index:  idx,
+		}, nil
+	case "(": // function call
+		var args []Expr
+		for {
+			arg, err := parseExpression(tokens, true)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, arg)
+			end, err := tokens.NextToken()
+			if err != nil {
+				return nil, err
+			}
+			if end.Type == ")" {
+				break
+			}
+			if end.Type != "," {
+				return nil, NewSyntaxErrorFromToken(end,
+					"Unexpected token %#v. Expecting closing parenthesis or comma.",
+					end.Type)
+			}
+		}
+		return &ExprFuncCall{
+			Token: tok,
+			Func:  val,
+			Args:  args,
+		}, nil
+	default:
+		tokens.Push(tok)
+		return val, err
+	}
+}
+
+func nextToken(t *TokenSource, ignoreNewlines bool) (rv *Token, err error) {
+	for {
+		tok, err := t.NextToken()
+		if err != nil {
+			return nil, err
+		}
+		if !ignoreNewlines || tok.Type != "newline" {
+			return tok, nil
+		}
+	}
+}
+
+func parseExprOrder3(tokens *TokenSource, ignoreNewlines bool) (Expr, error) {
+	tok, err := nextToken(tokens, ignoreNewlines)
+	if err != nil {
+		return nil, err
+	}
+	switch tok.Type {
+	case "-":
+		val, err := parseExprOrder3(tokens, ignoreNewlines)
+		if err != nil {
+			return nil, err
+		}
+		return &ExprNegative{Token: tok, Expr: val}, nil
+	case "not":
+		val, err := parseExprOrder3(tokens, ignoreNewlines)
+		if err != nil {
+			return nil, err
+		}
+		return &ExprNot{Token: tok, Expr: val}, nil
+	}
+	tokens.Push(tok)
+	return parseExprOrder2(tokens)
+}
+
+func parseExpression(tokens *TokenSource, ignoreNewlines bool) (Expr, error) {
+	val, err := parseExprOrder3(tokens, ignoreNewlines)
+	if err != nil {
+		return nil, err
+	}
+	op, err := nextToken(tokens, ignoreNewlines)
+	if err != nil {
+		return nil, err
+	}
+	switch op.Type {
+	// TODO: order of operations
+	// TODO: left-associative
+	case "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "%", "/", "and", "or":
+		end, err := parseExpression(tokens, ignoreNewlines)
+		if err != nil {
+			return nil, err
+		}
+		return &ExprOp{
+			Token: op,
+			Left:  val,
+			Op:    op,
+			Right: end,
+		}, nil
+	default:
+		tokens.Push(op)
+		return val, err
+	}
 }
 
 func parseStatementBlock(tokens *TokenSource) (rv []Stmt, err error) {
@@ -81,10 +254,20 @@ func parseStatementBlock(tokens *TokenSource) (rv []Stmt, err error) {
 			"Unexpected token %#v. Expecting '{'", leftbrace.Type)
 	}
 	for {
-		rightbrace, err := tokens.NextToken()
-		if err != nil {
-			return nil, err
+		var rightbrace *Token
+	loop:
+		for {
+			rightbrace, err = tokens.NextToken()
+			if err != nil {
+				return nil, err
+			}
+			switch rightbrace.Type {
+			case "newline", ";":
+			default:
+				break loop
+			}
 		}
+
 		if rightbrace.Type == "}" {
 			return rv, nil
 		}
@@ -97,13 +280,29 @@ func parseStatementBlock(tokens *TokenSource) (rv []Stmt, err error) {
 	}
 }
 
-// IF <expression> { <statement>* }
+// IF <expression> { <statement>* } [ ELSE { <statement>* } ]
 func parseIf(start *Token, tokens *TokenSource) (Stmt, error) {
-	expr, err := parseExpression(tokens)
+	expr, err := parseExpression(tokens, false)
 	if err != nil {
 		return nil, err
 	}
 	stmts, err := parseStatementBlock(tokens)
+	if err != nil {
+		return nil, err
+	}
+	tok, err := tokens.NextToken()
+	if err != nil {
+		return nil, err
+	}
+	if tok.Type != "keyword" || tok.Val != "else" {
+		tokens.Push(tok)
+		return &StmtIf{
+			Token: start,
+			Test:  expr,
+			Body:  stmts,
+		}, nil
+	}
+	elseBody, err := parseStatementBlock(tokens)
 	if err != nil {
 		return nil, err
 	}
@@ -111,18 +310,7 @@ func parseIf(start *Token, tokens *TokenSource) (Stmt, error) {
 		Token: start,
 		Test:  expr,
 		Body:  stmts,
-	}, nil
-}
-
-// ELSE { <statement>* }
-func parseElse(start *Token, tokens *TokenSource) (Stmt, error) {
-	stmts, err := parseStatementBlock(tokens)
-	if err != nil {
-		return nil, err
-	}
-	return &StmtElse{
-		Token: start,
-		Body:  stmts,
+		Else:  elseBody,
 	}, nil
 }
 
@@ -146,7 +334,7 @@ func parseLoop(start *Token, tokens *TokenSource) (Stmt, error) {
 
 // WHILE <expression> { <statement>* }
 func parseWhile(start *Token, tokens *TokenSource) (Stmt, error) {
-	expr, err := parseExpression(tokens)
+	expr, err := parseExpression(tokens, false)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +381,7 @@ func parseProc(start *Token, tokens *TokenSource) (Stmt, error) {
 
 // RETURN <expression>
 func parseReturn(start *Token, tokens *TokenSource) (Stmt, error) {
-	expr, err := parseExpression(tokens)
+	expr, err := parseExpression(tokens, false)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +393,7 @@ func parseReturn(start *Token, tokens *TokenSource) (Stmt, error) {
 
 // <variable> = <expression>
 func parseAssignment(lhs *Token, tokens *TokenSource) (Stmt, error) {
-	expr, err := parseExpression(tokens)
+	expr, err := parseExpression(tokens, false)
 	if err != nil {
 		return nil, err
 	}
@@ -216,9 +404,39 @@ func parseAssignment(lhs *Token, tokens *TokenSource) (Stmt, error) {
 	}, nil
 }
 
-// <variable> [<expression> (, <expression>)* ]
-func parseVarProcCall(proc *Token, tokens *TokenSource) (Stmt, error) {
-	panic("TODO")
+// <expression_order_2> [<expression> (, <expression>)* ]
+func parseProcCall(tokens *TokenSource) (Stmt, error) {
+	proc, err := parseExprOrder2(tokens)
+	if err != nil {
+		return nil, err
+	}
+	tok, err := tokens.NextToken()
+	if err != nil {
+		return nil, err
+	}
+	if tok.Type == "newline" || tok.Type == ";" {
+		return &StmtProcCall{Proc: proc}, nil
+	}
+	tokens.Push(tok)
+
+	var args []Expr
+	for {
+		arg, err := parseExpression(tokens, false)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, arg)
+
+		tok, err := tokens.NextToken()
+		if err != nil {
+			return nil, err
+		}
+		if tok.Type != "," {
+			tokens.Push(tok)
+			break
+		}
+	}
+	return &StmtProcCall{Proc: proc, Args: args}, nil
 }
 
 // `(`<expression>`)` [<expression> (, <expression>)* ]

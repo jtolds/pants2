@@ -11,7 +11,7 @@ type Token struct {
 	Start  int
 	Length int
 	Type   string
-	Repr   string
+	Val    string
 }
 
 type Tokenizer struct {
@@ -93,12 +93,16 @@ func (t *Tokenizer) Next() (*Token, error) {
 			return nil, NewSyntaxError(t.line, t.charpos,
 				"Unexpected underscore after number")
 		}
+		typ := "int"
+		if decimal {
+			typ = "float"
+		}
 		return &Token{
 			Line:   t.line,
 			Start:  start,
 			Length: t.charpos - start,
-			Type:   "number",
-			Repr:   string(t.chars[start:t.charpos])}, nil
+			Type:   typ,
+			Val:    string(t.chars[start:t.charpos])}, nil
 	}
 
 	if unicode.IsLetter(t.chars[t.charpos]) || t.chars[t.charpos] == '_' {
@@ -115,13 +119,13 @@ func (t *Tokenizer) Next() (*Token, error) {
 			"while", "WHILE", "import", "IMPORT", "unimport", "UNIMPORT",
 			"undefine", "UNDEFINE", "export", "EXPORT", "func", "FUNC",
 			"proc", "PROC", "break", "BREAK", "next", "NEXT", "done", "DONE",
-			"return", "RETURN", "and", "AND", "or", "OR", "not", "NOT":
+			"return", "RETURN":
 			return &Token{
 				Line:   t.line,
 				Start:  start,
 				Length: t.charpos - start,
 				Type:   "keyword",
-				Repr:   strings.ToLower(name),
+				Val:    strings.ToLower(name),
 			}, nil
 		case "true", "TRUE", "false", "FALSE":
 			return &Token{
@@ -129,7 +133,14 @@ func (t *Tokenizer) Next() (*Token, error) {
 				Start:  start,
 				Length: t.charpos - start,
 				Type:   "bool",
-				Repr:   strings.ToLower(name),
+				Val:    strings.ToLower(name),
+			}, nil
+		case "and", "AND", "or", "OR", "not", "NOT":
+			return &Token{
+				Line:   t.line,
+				Start:  start,
+				Length: t.charpos - start,
+				Type:   strings.ToLower(name),
 			}, nil
 		default:
 			return &Token{
@@ -137,7 +148,7 @@ func (t *Tokenizer) Next() (*Token, error) {
 				Start:  start,
 				Length: t.charpos - start,
 				Type:   "variable",
-				Repr:   name,
+				Val:    name,
 			}, nil
 		}
 	}
@@ -153,6 +164,7 @@ func (t *Tokenizer) parseString() (*Token, error) {
 	}
 	start := t.charpos
 	t.charpos += 1
+	value := make([]rune, 0, len(t.chars)-t.charpos)
 	for ; t.charpos < len(t.chars); t.charpos += 1 {
 		if t.chars[t.charpos] == '\\' {
 			t.charpos += 1
@@ -160,24 +172,32 @@ func (t *Tokenizer) parseString() (*Token, error) {
 				break
 			}
 			switch t.chars[t.charpos] {
-			case '\\', '"', 'n', 't', 'x':
+			case '\\':
+				value = append(value, '\\')
+			case '"':
+				value = append(value, '"')
+			case 'n':
+				value = append(value, '\n')
+			case 't':
+				value = append(value, '\t')
 			default:
 				return nil, NewSyntaxError(t.line, t.charpos-1,
 					"String escape value unknown: \\%v.\n"+
-						"Expected one of \\\\, \\\", \\n, \\t, or \\x",
+						"Expected one of \\\\, \\\", \\n, \\t",
 					string(t.chars[t.charpos]))
 			}
 			continue
-		}
-		if t.chars[t.charpos] == '"' {
+		} else if t.chars[t.charpos] == '"' {
 			t.charpos += 1
 			return &Token{
 				Line:   t.line,
 				Start:  start,
 				Length: t.charpos - start,
 				Type:   "string",
-				Repr:   string(t.chars[start+1 : t.charpos-1]),
+				Val:    string(value),
 			}, nil
+		} else {
+			value = append(value, t.chars[t.charpos])
 		}
 	}
 	return nil, NewSyntaxError(t.line, start,
@@ -216,6 +236,7 @@ type TokenSource struct {
 	ls     LineSource
 	tokens []*Token
 	pushed []*Token
+	end    bool
 }
 
 func NewTokenSource(ls LineSource) *TokenSource {
@@ -223,6 +244,9 @@ func NewTokenSource(ls LineSource) *TokenSource {
 }
 
 func (t *TokenSource) NextToken() (rv *Token, err error) {
+	if t.end {
+		return nil, io.EOF
+	}
 	if len(t.pushed) > 0 {
 		last := len(t.pushed) - 1
 		rv, t.pushed = t.pushed[last], t.pushed[:last]
@@ -231,6 +255,17 @@ func (t *TokenSource) NextToken() (rv *Token, err error) {
 	if len(t.tokens) == 0 {
 		line, err := t.ls.NextLine()
 		if err != nil {
+			if err == io.EOF {
+				filename, lineno := t.ls.Pos()
+				t.end = true
+				return &Token{
+					Line: &Line{
+						Filename: filename,
+						Lineno:   lineno,
+					},
+					Type: "eof",
+				}, nil
+			}
 			return nil, err
 		}
 		tokens, err := Tokenize(line)
