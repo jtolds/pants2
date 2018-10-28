@@ -29,7 +29,7 @@ type StmtIf struct {
 }
 
 func (s *StmtIf) String() string {
-	parts := make([]string, 0, len(s.Body)+len(s.Else)+2)
+	parts := make([]string, 0, len(s.Body)+len(s.Else)+3)
 	parts = append(parts, fmt.Sprintf("if %s {\n", s.Test))
 	for _, stmt := range s.Body {
 		parts = append(parts, stmt.String())
@@ -74,7 +74,7 @@ type StmtWhile struct {
 }
 
 func (s *StmtWhile) String() string {
-	parts := make([]string, 0, len(s.Body)+1)
+	parts := make([]string, 0, len(s.Body)+2)
 	parts = append(parts, fmt.Sprintf("while %s {\n", s.Test))
 	for _, stmt := range s.Body {
 		parts = append(parts, stmt.String())
@@ -89,9 +89,21 @@ type StmtImport struct {
 	Prefix *Var
 }
 
+func (s *StmtImport) String() string {
+	if s.Prefix == nil {
+		return fmt.Sprintf("import %s\n", s.Path.String())
+	}
+	return fmt.Sprintf("import %s withprefix %s\n",
+		s.Path.String(), s.Prefix.String())
+}
+
 type StmtUnimport struct {
 	Token *Token
 	Path  *ExprString
+}
+
+func (s *StmtUnimport) String() string {
+	return fmt.Sprintf("unimport %s\n", s.Path.String())
 }
 
 type StmtUndefine struct {
@@ -99,9 +111,25 @@ type StmtUndefine struct {
 	Vars  []*Var
 }
 
+func (s *StmtUndefine) String() string {
+	vars := make([]string, 0, len(s.Vars))
+	for _, v := range s.Vars {
+		vars = append(vars, v.String())
+	}
+	return fmt.Sprintf("undefine %s\n", strings.Join(vars, ", "))
+}
+
 type StmtExport struct {
 	Token *Token
 	Vars  []*Var
+}
+
+func (s *StmtExport) String() string {
+	vars := make([]string, 0, len(s.Vars))
+	for _, v := range s.Vars {
+		vars = append(vars, v.String())
+	}
+	return fmt.Sprintf("export %s\n", strings.Join(vars, ", "))
 }
 
 type StmtFuncDef struct {
@@ -111,11 +139,41 @@ type StmtFuncDef struct {
 	Body  []Stmt
 }
 
+func (s *StmtFuncDef) String() string {
+	rv := make([]string, 0, len(s.Body)+2)
+	args := make([]string, 0, len(s.Args))
+	for _, arg := range s.Args {
+		args = append(args, arg.Token.Val)
+	}
+	rv = append(rv, fmt.Sprintf("func %s(%s) {\n",
+		s.Name.Token.Val, strings.Join(args, ", ")))
+	for _, stmt := range s.Body {
+		rv = append(rv, stmt.String())
+	}
+	rv = append(rv, "}\n")
+	return strings.Join(rv, "")
+}
+
 type StmtProcDef struct {
 	Token *Token
 	Name  *Var
 	Args  []*Var
 	Body  []Stmt
+}
+
+func (s *StmtProcDef) String() string {
+	rv := make([]string, 0, len(s.Body)+2)
+	args := make([]string, 0, len(s.Args))
+	for _, arg := range s.Args {
+		args = append(args, " "+arg.Token.Val)
+	}
+	rv = append(rv, fmt.Sprintf("proc %s%s {\n",
+		s.Name.Token.Val, strings.Join(args, ",")))
+	for _, stmt := range s.Body {
+		rv = append(rv, stmt.String())
+	}
+	rv = append(rv, "}\n")
+	return strings.Join(rv, "")
 }
 
 type StmtProcCall struct {

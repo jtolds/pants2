@@ -119,7 +119,7 @@ func (t *Tokenizer) Next() (*Token, error) {
 			"while", "WHILE", "import", "IMPORT", "unimport", "UNIMPORT",
 			"undefine", "UNDEFINE", "export", "EXPORT", "func", "FUNC",
 			"proc", "PROC", "break", "BREAK", "next", "NEXT", "done", "DONE",
-			"return", "RETURN":
+			"return", "RETURN", "withprefix", "WITHPREFIX":
 			return &Token{
 				Line:   t.line,
 				Start:  start,

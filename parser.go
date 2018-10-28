@@ -22,58 +22,76 @@ loop:
 		}
 	}
 
-	if token.Type == "keyword" {
-		switch token.Val {
-		case "if":
-			return parseIf(token, tokens)
-		case "var":
-			return parseVar(token, tokens)
-		case "loop":
-			return parseLoop(token, tokens)
-		case "while":
-			return parseWhile(token, tokens)
-		case "import":
-			return parseImport(token, tokens)
-		case "unimport":
-			return parseUnimport(token, tokens)
-		case "undefine":
-			return parseUndefine(token, tokens)
-		case "export":
-			return parseExport(token, tokens)
-		case "func":
-			return parseFunc(token, tokens)
-		case "proc":
-			return parseProc(token, tokens)
-		case "break", "next", "done":
-			return &StmtControl{Token: token}, nil
-		case "return":
-			return parseReturn(token, tokens)
-		default:
-			return nil, NewSyntaxErrorFromToken(token,
-				"Unexpected keyword %#v. Expecting statement.", token.Type)
+	stmt, err = func() (stmt Stmt, err error) {
+		if token.Type == "keyword" {
+			switch token.Val {
+			case "if":
+				return parseIf(token, tokens)
+			case "var":
+				return parseVar(token, tokens)
+			case "loop":
+				return parseLoop(token, tokens)
+			case "while":
+				return parseWhile(token, tokens)
+			case "import":
+				return parseImport(token, tokens)
+			case "unimport":
+				return parseUnimport(token, tokens)
+			case "undefine":
+				return parseUndefine(token, tokens)
+			case "export":
+				return parseExport(token, tokens)
+			case "func":
+				return parseFunc(token, tokens)
+			case "proc":
+				return parseProc(token, tokens)
+			case "break", "next", "done":
+				return &StmtControl{Token: token}, nil
+			case "return":
+				return parseReturn(token, tokens)
+			default:
+				return nil, NewSyntaxErrorFromToken(token,
+					"Unexpected keyword %#v. Expecting statement.", token.Type)
+			}
 		}
-	}
 
-	if token.Type == "variable" {
-		nextToken, err := tokens.NextToken()
-		if err != nil {
-			return nil, err
+		if token.Type == "variable" {
+			nextToken, err := tokens.NextToken()
+			if err != nil {
+				return nil, err
+			}
+			if nextToken.Type == "=" {
+				return parseAssignment(token, tokens)
+			}
+			tokens.Push(nextToken)
+			tokens.Push(token)
+			return parseProcCall(tokens)
 		}
-		if nextToken.Type == "=" {
-			return parseAssignment(token, tokens)
+
+		if token.Type == "(" {
+			tokens.Push(token)
+			return parseProcCall(tokens)
 		}
-		tokens.Push(nextToken)
-		tokens.Push(token)
-		return parseProcCall(tokens)
-	}
 
-	if token.Type == "(" {
-		tokens.Push(token)
-		return parseProcCall(tokens)
+		return nil, NewSyntaxErrorFromToken(token,
+			"Unexpected token %#v. Expecting statement.", token.Type)
+	}()
+	if err != nil {
+		return nil, err
 	}
-
-	return nil, NewSyntaxErrorFromToken(token,
-		"Unexpected token %#v. Expecting statement.", token.Type)
+	tok, err := tokens.NextToken()
+	if err != nil {
+		return nil, err
+	}
+	if tok.Type == "eof" || tok.Type == "}" {
+		tokens.Push(tok)
+		return stmt, nil
+	}
+	if tok.Type != "newline" && tok.Type != ";" {
+		return nil, NewSyntaxErrorFromToken(tok,
+			"Unexpected token %#v. Expecting semicolon or newline.", tok.Type)
+	}
+	return stmt, nil
 }
 
 func parseExprOrder1(tokens *TokenSource) (Expr, error) {
@@ -197,6 +215,7 @@ func parseExprOrder3(tokens *TokenSource, ignoreNewlines bool) (Expr, error) {
 	if err != nil {
 		return nil, err
 	}
+	// TODO: these are probably in the wrong order of ops spot
 	switch tok.Type {
 	case "-":
 		val, err := parseExprOrder3(tokens, ignoreNewlines)
@@ -215,33 +234,51 @@ func parseExprOrder3(tokens *TokenSource, ignoreNewlines bool) (Expr, error) {
 	return parseExprOrder2(tokens)
 }
 
-func parseExpression(tokens *TokenSource, ignoreNewlines bool) (Expr, error) {
-	val, err := parseExprOrder3(tokens, ignoreNewlines)
+func parseExprOrder4(tokens *TokenSource, ignoreNewlines bool,
+	ops []map[string]bool) (Expr, error) {
+	if len(ops) == 0 {
+		return parseExprOrder3(tokens, ignoreNewlines)
+	}
+	val, err := parseExprOrder4(tokens, ignoreNewlines, ops[1:])
 	if err != nil {
 		return nil, err
 	}
-	op, err := nextToken(tokens, ignoreNewlines)
-	if err != nil {
-		return nil, err
-	}
-	switch op.Type {
-	// TODO: order of operations
-	// TODO: left-associative
-	case "==", "!=", "<", "<=", ">", ">=", "+", "-", "*", "%", "/", "and", "or":
-		end, err := parseExpression(tokens, ignoreNewlines)
+	for {
+		opToken, err := nextToken(tokens, ignoreNewlines)
 		if err != nil {
 			return nil, err
 		}
-		return &ExprOp{
-			Token: op,
-			Left:  val,
-			Op:    op,
-			Right: end,
-		}, nil
-	default:
-		tokens.Push(op)
-		return val, err
+		if ops[0][opToken.Type] {
+			next, err := parseExprOrder4(tokens, ignoreNewlines, ops[1:])
+			if err != nil {
+				return nil, err
+			}
+			val = &ExprOp{
+				Token: opToken,
+				Left:  val,
+				Op:    opToken,
+				Right: next,
+			}
+		} else {
+			tokens.Push(opToken)
+			return val, nil
+		}
 	}
+}
+
+func parseExpression(tokens *TokenSource, ignoreNewlines bool) (Expr, error) {
+	return parseExprOrder4(tokens, ignoreNewlines,
+		[]map[string]bool{
+			map[string]bool{
+				"and": true, "or": true,
+			}, map[string]bool{
+				"==": true, "!=": true, "<": true, "<=": true, ">": true, ">=": true,
+			}, map[string]bool{
+				"+": true, "-": true,
+			}, map[string]bool{
+				"*": true, "%": true, "/": true,
+			},
+		})
 }
 
 func parseStatementBlock(tokens *TokenSource) (rv []Stmt, err error) {
@@ -314,9 +351,45 @@ func parseIf(start *Token, tokens *TokenSource) (Stmt, error) {
 	}, nil
 }
 
+func parseVarList(tokens *TokenSource, ignoreNewlines bool) ([]*Var, error) {
+	v, err := nextToken(tokens, ignoreNewlines)
+	if err != nil {
+		return nil, err
+	}
+	if v.Type != "variable" {
+		return nil, NewSyntaxErrorFromToken(
+			v, "Unexpected token %#v. Expecting variable", v.Type)
+	}
+	vars := []*Var{&Var{Token: v}}
+	for {
+		comma, err := nextToken(tokens, ignoreNewlines)
+		if err != nil {
+			return nil, err
+		}
+		if comma.Type != "," {
+			tokens.Push(comma)
+			break
+		}
+		v, err := nextToken(tokens, ignoreNewlines)
+		if err != nil {
+			return nil, err
+		}
+		if v.Type != "variable" {
+			return nil, NewSyntaxErrorFromToken(
+				v, "Unexpected token %#v. Expecting variable", v.Type)
+		}
+		vars = append(vars, &Var{Token: v})
+	}
+	return vars, nil
+}
+
 // VAR <variable> (, <variable>)*
 func parseVar(start *Token, tokens *TokenSource) (Stmt, error) {
-	panic("TODO")
+	vars, err := parseVarList(tokens, false)
+	if err != nil {
+		return nil, err
+	}
+	return &StmtVar{Token: start, Vars: vars}, nil
 }
 
 // LOOP { <statement>* }
@@ -349,34 +422,185 @@ func parseWhile(start *Token, tokens *TokenSource) (Stmt, error) {
 	}, nil
 }
 
-// IMPORT <string> [WITH PREFIX <variable>]
+// IMPORT <string> [WITHPREFIX <variable>]
 func parseImport(start *Token, tokens *TokenSource) (Stmt, error) {
-	panic("TODO")
+	module, err := tokens.NextToken()
+	if err != nil {
+		return nil, err
+	}
+	if module.Type != "string" {
+		return nil, NewSyntaxErrorFromToken(module,
+			"Unexpected token %#v. Expecting module string", module.Type)
+	}
+	next, err := tokens.NextToken()
+	if err != nil {
+		return nil, err
+	}
+	if next.Type != "keyword" || next.Val != "withprefix" {
+		tokens.Push(next)
+		return &StmtImport{
+			Token: start,
+			Path: &ExprString{
+				Token: module,
+				Val:   module.Val,
+			}}, nil
+	}
+	prefix, err := tokens.NextToken()
+	if err != nil {
+		return nil, err
+	}
+	if prefix.Type != "variable" {
+		return nil, NewSyntaxErrorFromToken(prefix,
+			"Unexpected token %#v. Expecting module prefix", prefix.Type)
+	}
+	return &StmtImport{
+		Token: start,
+		Path: &ExprString{
+			Token: module,
+			Val:   module.Val,
+		},
+		Prefix: &Var{
+			Token: prefix,
+		}}, nil
 }
 
 // UNIMPORT <string>
 func parseUnimport(start *Token, tokens *TokenSource) (Stmt, error) {
-	panic("TODO")
+	module, err := tokens.NextToken()
+	if err != nil {
+		return nil, err
+	}
+	if module.Type != "string" {
+		return nil, NewSyntaxErrorFromToken(module,
+			"Unexpected token %#v. Expecting module string", module.Type)
+	}
+	return &StmtUnimport{
+		Token: start,
+		Path: &ExprString{
+			Token: module,
+			Val:   module.Val,
+		}}, nil
 }
 
 // UNDEFINE <variable> (, <variable>)*
 func parseUndefine(start *Token, tokens *TokenSource) (Stmt, error) {
-	panic("TODO")
+	vars, err := parseVarList(tokens, false)
+	if err != nil {
+		return nil, err
+	}
+	return &StmtUndefine{Token: start, Vars: vars}, nil
 }
 
 // EXPORT <variable> (, <variable>)*
 func parseExport(start *Token, tokens *TokenSource) (Stmt, error) {
-	panic("TODO")
+	vars, err := parseVarList(tokens, false)
+	if err != nil {
+		return nil, err
+	}
+	return &StmtExport{Token: start, Vars: vars}, nil
 }
 
 // FUNC <variable> `(`[<variable> (, <variable>)*]`)` { <statement>* }
 func parseFunc(start *Token, tokens *TokenSource) (Stmt, error) {
-	panic("TODO")
+	name, err := tokens.NextToken()
+	if err != nil {
+		return nil, err
+	}
+	if name.Type != "variable" {
+		return nil, NewSyntaxErrorFromToken(
+			name, "Unexpected token %#v. Expecting procedure name", name.Type)
+	}
+	leftparen, err := tokens.NextToken()
+	if err != nil {
+		return nil, err
+	}
+	if leftparen.Type != "(" {
+		return nil, NewSyntaxErrorFromToken(leftparen,
+			"Unexpected token %#v. Expecting left parenthesis.", leftparen.Type)
+	}
+
+	rightparen, err := nextToken(tokens, true)
+	if err != nil {
+		return nil, err
+	}
+	var vars []*Var
+	if rightparen.Type != ")" {
+		if rightparen.Type != "variable" {
+			return nil, NewSyntaxErrorFromToken(rightparen,
+				"Unexpected token %#v. Expecting variable or \")\"", rightparen.Type)
+		}
+		tokens.Push(rightparen)
+		vars, err = parseVarList(tokens, true)
+		if err != nil {
+			return nil, err
+		}
+		rightparen, err = nextToken(tokens, true)
+		if err != nil {
+			return nil, err
+		}
+		if rightparen.Type != ")" {
+			return nil, NewSyntaxErrorFromToken(
+				rightparen, "Unexpected token %#v. Expecting \")\"", rightparen.Type)
+		}
+	}
+	stmts, err := parseStatementBlock(tokens)
+	if err != nil {
+		return nil, err
+	}
+	return &StmtFuncDef{
+		Token: start,
+		Name:  &Var{Token: name},
+		Args:  vars,
+		Body:  stmts,
+	}, nil
 }
 
 // PROC <variable> [<variable> (, <variable>)*] { <statement>* }
 func parseProc(start *Token, tokens *TokenSource) (Stmt, error) {
-	panic("TODO")
+	name, err := tokens.NextToken()
+	if err != nil {
+		return nil, err
+	}
+	if name.Type != "variable" {
+		return nil, NewSyntaxErrorFromToken(
+			name, "Unexpected token %#v. Expecting procedure name", name.Type)
+	}
+	leftbrace, err := tokens.NextToken()
+	if err != nil {
+		return nil, err
+	}
+	var vars []*Var
+	if leftbrace.Type != "{" {
+		if leftbrace.Type != "variable" {
+			return nil, NewSyntaxErrorFromToken(
+				leftbrace, "Unexpected token %#v. Expecting variable or \"{\"",
+				leftbrace.Type)
+		}
+		tokens.Push(leftbrace)
+		vars, err = parseVarList(tokens, false)
+		if err != nil {
+			return nil, err
+		}
+		leftbrace, err = tokens.NextToken()
+		if err != nil {
+			return nil, err
+		}
+		if leftbrace.Type != "{" {
+			return nil, NewSyntaxErrorFromToken(
+				leftbrace, "Unexpected token %#v. Expecting \"{\"", leftbrace.Type)
+		}
+	}
+	tokens.Push(leftbrace)
+	stmts, err := parseStatementBlock(tokens)
+	if err != nil {
+		return nil, err
+	}
+	return &StmtProcDef{
+		Token: start,
+		Name:  &Var{Token: name},
+		Args:  vars,
+		Body:  stmts,
+	}, nil
 }
 
 // RETURN <expression>
@@ -414,10 +638,10 @@ func parseProcCall(tokens *TokenSource) (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	if tok.Type == "newline" || tok.Type == ";" {
+	tokens.Push(tok)
+	if tok.Type == "newline" || tok.Type == ";" || tok.Type == "}" {
 		return &StmtProcCall{Proc: proc}, nil
 	}
-	tokens.Push(tok)
 
 	var args []Expr
 	for {
@@ -437,9 +661,4 @@ func parseProcCall(tokens *TokenSource) (Stmt, error) {
 		}
 	}
 	return &StmtProcCall{Proc: proc, Args: args}, nil
-}
-
-// `(`<expression>`)` [<expression> (, <expression>)* ]
-func parseExprProcCall(proc *Token, tokens *TokenSource) (Stmt, error) {
-	panic("TODO")
 }
