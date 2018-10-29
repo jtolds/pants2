@@ -35,5 +35,28 @@ func IsSyntaxError(err error) bool {
 }
 
 func IsHandledError(err error) bool {
-	return IsSyntaxError(err)
+	return IsSyntaxError(err) || IsRuntimeError(err)
+}
+
+type RuntimeError struct {
+	token *Token
+	msg   string
+}
+
+func NewRuntimeError(token *Token, format string, args ...interface{}) (
+	re *RuntimeError) {
+	return &RuntimeError{
+		token: token,
+		msg:   fmt.Sprintf(format, args...),
+	}
+}
+
+func IsRuntimeError(err error) bool {
+	_, ok := err.(*RuntimeError)
+	return ok
+}
+
+func (e *RuntimeError) Error() string {
+	return fmt.Sprintf("Runtime error on file %#v, line %d: %s",
+		e.token.Line.Filename, e.token.Line.Lineno, e.msg)
 }

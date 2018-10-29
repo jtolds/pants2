@@ -21,6 +21,7 @@ func handleErr(err error) {
 }
 
 func main() {
+	m := NewScope()
 	ts := NewTokenSource(NewReaderLineSource("<stdin>", os.Stdin, func() error {
 		_, err := fmt.Printf("> ")
 		return err
@@ -34,11 +35,6 @@ func main() {
 			handleErr(err)
 			continue
 		}
-		handleErr(Run(stmt))
+		handleErr(m.Run(stmt))
 	}
-}
-
-func Run(stmt Stmt) error {
-	_, err := fmt.Print(stmt)
-	return err
 }

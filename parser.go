@@ -2,7 +2,7 @@ package main
 
 import (
 	"io"
-	"strconv"
+	"math/big"
 )
 
 func ParseStatement(tokens *TokenSource) (stmt Stmt, err error) {
@@ -105,15 +105,17 @@ func parseExprOrder1(tokens *TokenSource) (Expr, error) {
 	case "string":
 		return &ExprString{Token: tok, Val: tok.Val}, nil
 	case "int":
-		val, err := strconv.ParseInt(tok.Val, 10, 64)
-		if err != nil {
-			return nil, err
+		val := new(big.Int)
+		_, ok := val.SetString(tok.Val, 10)
+		if !ok {
+			panic("failed to parse tokenized integer")
 		}
 		return &ExprInt{Token: tok, Val: val}, nil
 	case "float":
-		val, err := strconv.ParseFloat(tok.Val, 64)
-		if err != nil {
-			return nil, err
+		val := new(big.Rat)
+		_, ok := val.SetString(tok.Val)
+		if !ok {
+			panic("failed to parse tokenized decimal")
 		}
 		return &ExprFloat{Token: tok, Val: val}, nil
 	case "bool":

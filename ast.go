@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 )
 
@@ -246,7 +247,7 @@ func (e *ExprString) String() string {
 
 type ExprInt struct {
 	Token *Token
-	Val   int64
+	Val   *big.Int
 }
 
 func (e *ExprInt) String() string {
@@ -255,7 +256,7 @@ func (e *ExprInt) String() string {
 
 type ExprFloat struct {
 	Token *Token
-	Val   float64
+	Val   *big.Rat
 }
 
 func (e *ExprFloat) String() string {
