@@ -178,8 +178,9 @@ func (s *StmtProcDef) String() string {
 }
 
 type StmtProcCall struct {
-	Proc Expr
-	Args []Expr
+	Token *Token
+	Proc  Expr
+	Args  []Expr
 }
 
 func (s *StmtProcCall) String() string {

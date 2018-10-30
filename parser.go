@@ -632,6 +632,11 @@ func parseAssignment(lhs *Token, tokens *TokenSource) (Stmt, error) {
 
 // <expression_order_2> [<expression> (, <expression>)* ]
 func parseProcCall(tokens *TokenSource) (Stmt, error) {
+	start, err := tokens.NextToken()
+	if err != nil {
+		return nil, err
+	}
+	tokens.Push(start)
 	proc, err := parseExprOrder2(tokens)
 	if err != nil {
 		return nil, err
@@ -642,7 +647,7 @@ func parseProcCall(tokens *TokenSource) (Stmt, error) {
 	}
 	tokens.Push(tok)
 	if tok.Type == "newline" || tok.Type == ";" || tok.Type == "}" {
-		return &StmtProcCall{Proc: proc}, nil
+		return &StmtProcCall{Token: start, Proc: proc}, nil
 	}
 
 	var args []Expr
@@ -662,5 +667,5 @@ func parseProcCall(tokens *TokenSource) (Stmt, error) {
 			break
 		}
 	}
-	return &StmtProcCall{Proc: proc, Args: args}, nil
+	return &StmtProcCall{Token: start, Proc: proc, Args: args}, nil
 }

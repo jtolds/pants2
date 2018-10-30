@@ -20,8 +20,20 @@ func handleErr(err error) {
 	}
 }
 
+func Print(args []Value) error {
+	for _, arg := range args {
+		_, err := fmt.Print(arg)
+		if err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Println()
+	return err
+}
+
 func main() {
 	m := NewScope()
+	m.Define("print", ProcCB(Print))
 	ts := NewTokenSource(NewReaderLineSource("<stdin>", os.Stdin, func() error {
 		_, err := fmt.Printf("> ")
 		return err
