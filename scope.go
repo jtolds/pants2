@@ -2,62 +2,7 @@ package main
 
 import (
 	"fmt"
-	"math/big"
-	"strings"
 )
-
-type Value interface {
-	String() string
-	value()
-}
-
-type ValInt struct{ val *big.Int }
-
-func (v ValInt) String() string { return v.val.String() }
-
-type ValFloat struct{ val *big.Rat }
-
-func (v ValFloat) String() string {
-	rv := strings.TrimRight(v.val.FloatString(10), "0")
-	if strings.HasSuffix(rv, ".") {
-		rv += "0"
-	}
-	return rv
-}
-
-type ValString struct{ val string }
-
-func (v ValString) String() string { return v.val }
-
-type ValBool struct{ val bool }
-
-func (v ValBool) String() string { return fmt.Sprint(v.val) }
-
-type ValProc interface {
-	Call(args []Value) error
-	Value
-}
-
-type ProcCB func([]Value) error
-
-func (f ProcCB) value()                  {}
-func (f ProcCB) Call(args []Value) error { return f(args) }
-func (f ProcCB) String() string          { return "<builtin>" }
-
-type ValFunc interface {
-	Call(args []Value) (Value, error)
-	Value
-}
-
-func (v ValInt) value()    {}
-func (v ValFloat) value()  {}
-func (v ValString) value() {}
-func (v ValBool) value()   {}
-
-type ValueCell struct {
-	Def *Line
-	Val Value
-}
 
 type Scope struct {
 	vars map[string]*ValueCell
@@ -76,7 +21,7 @@ func (s *Scope) Define(name string, val Value) {
 	}
 }
 
-func (s *Scope) CopyScope() *Scope {
+func (s *Scope) Copy() *Scope {
 	c := &Scope{
 		vars: make(map[string]*ValueCell, len(s.vars)),
 	}
@@ -84,6 +29,16 @@ func (s *Scope) CopyScope() *Scope {
 		c.vars[k] = v
 	}
 	return c
+}
+
+func (s *Scope) RunAll(stmts []Stmt) error {
+	for _, stmt := range stmts {
+		err := s.Run(stmt)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Scope) Run(stmt Stmt) error {
@@ -132,7 +87,25 @@ func (s *Scope) Run(stmt Stmt) error {
 		}
 		return proc.Call(args)
 	case *StmtIf:
-		panic("TODO")
+		test, err := s.Eval(stmt.Test)
+		if err != nil {
+			return err
+		}
+		testbool, ok := test.(ValBool)
+		if !ok {
+			return NewRuntimeError(stmt.Token,
+				"if statement requires a truth value, got %#v instead.", test)
+		}
+		if testbool.val {
+			if len(stmt.Body) > 0 {
+				return s.Copy().RunAll(stmt.Body)
+			}
+		} else {
+			if len(stmt.Else) > 0 {
+				return s.Copy().RunAll(stmt.Else)
+			}
+		}
+		return nil
 	case *StmtWhile:
 		panic("TODO")
 	case *StmtImport:
