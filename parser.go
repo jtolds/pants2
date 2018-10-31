@@ -104,20 +104,13 @@ func parseExprOrder1(tokens *TokenSource) (Expr, error) {
 		return &ExprVar{Token: tok, Var: &Var{Token: tok}}, nil
 	case "string":
 		return &ExprString{Token: tok, Val: tok.Val}, nil
-	case "int":
-		val := new(big.Int)
-		_, ok := val.SetString(tok.Val, 10)
-		if !ok {
-			panic("failed to parse tokenized integer")
-		}
-		return &ExprInt{Token: tok, Val: val}, nil
-	case "float":
+	case "number":
 		val := new(big.Rat)
 		_, ok := val.SetString(tok.Val)
 		if !ok {
-			panic("failed to parse tokenized decimal")
+			panic("failed to parse tokenized number")
 		}
-		return &ExprFloat{Token: tok, Val: val}, nil
+		return &ExprNumber{Token: tok, Val: val}, nil
 	case "bool":
 		return &ExprBool{Token: tok, Val: tok.Val == "true"}, nil
 	case "(":

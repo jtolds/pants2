@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math/big"
 )
 
 type Scope struct {
@@ -85,7 +86,7 @@ func (s *Scope) Run(stmt Stmt) error {
 			}
 			args = append(args, val)
 		}
-		return proc.Call(args)
+		return proc.Call(stmt.Token, args)
 	case *StmtIf:
 		test, err := s.Eval(stmt.Test)
 		if err != nil {
@@ -107,18 +108,56 @@ func (s *Scope) Run(stmt Stmt) error {
 		}
 		return nil
 	case *StmtWhile:
-		panic("TODO")
+		for {
+			test, err := s.Eval(stmt.Test)
+			if err != nil {
+				return err
+			}
+			testbool, ok := test.(ValBool)
+			if !ok {
+				return NewRuntimeError(stmt.Token,
+					"while statement requires a truth value, got %#v instead.", test)
+			}
+			if !testbool.val {
+				return nil
+			}
+			err = s.Copy().RunAll(stmt.Body)
+			if err != nil {
+				return err
+			}
+		}
+	case *StmtProcDef:
+		if d, exists := s.vars[stmt.Name.Token.Val]; exists {
+			return NewRuntimeError(stmt.Name.Token,
+				"Variable %v already defined on file %#v, line %d",
+				stmt.Name.Token.Val, d.Def.Filename, d.Def.Lineno)
+		}
+		s.vars[stmt.Name.Token.Val] = &ValueCell{
+			Def: stmt.Token.Line,
+			Val: &UserProc{
+				name:  stmt.Name.Token.Val,
+				scope: s,
+				args:  stmt.Args,
+				body:  stmt.Body}}
+		return nil
+	case *StmtUndefine:
+		for _, v := range stmt.Vars {
+			if _, exists := s.vars[v.Token.Val]; !exists {
+				return NewRuntimeError(v.Token,
+					"Variable %v already not defined", v.Token.Val)
+			}
+		}
+		for _, v := range stmt.Vars {
+			delete(s.vars, v.Token.Val)
+		}
+		return nil
 	case *StmtImport:
 		panic("TODO")
 	case *StmtUnimport:
 		panic("TODO")
-	case *StmtUndefine:
-		panic("TODO")
 	case *StmtExport:
 		panic("TODO")
 	case *StmtFuncDef:
-		panic("TODO")
-	case *StmtProcDef:
 		panic("TODO")
 	case *StmtControl:
 		panic("TODO")
@@ -146,24 +185,67 @@ func (s *Scope) Eval(expr Expr) (Value, error) {
 		return rv, nil
 	case *ExprString:
 		return ValString{val: expr.Val}, nil
-	case *ExprInt:
-		return ValInt{val: expr.Val}, nil
-	case *ExprFloat:
-		return ValFloat{val: expr.Val}, nil
+	case *ExprNumber:
+		return ValNumber{val: expr.Val}, nil
 	case *ExprBool:
 		return ValBool{val: expr.Val}, nil
+	case *ExprNot:
+		test, err := s.Eval(expr.Expr)
+		if err != nil {
+			return nil, err
+		}
+		testbool, ok := test.(ValBool)
+		if !ok {
+			return nil, NewRuntimeError(expr.Token,
+				"not statement requires a truth value, got %#v instead.", test)
+		}
+		return ValBool{val: !testbool.val}, nil
+	case *ExprNegative:
+		val, err := s.Eval(expr.Expr)
+		if err != nil {
+			return nil, err
+		}
+		switch val := val.(type) {
+		case ValNumber:
+			n := new(big.Rat)
+			return ValNumber{val: n.Neg(val.val)}, nil
+		default:
+			return nil, NewRuntimeError(expr.Token,
+				"negative requires a number, got %#v instead.", val)
+		}
 	case *ExprOp:
 		if expr.Op.Type == "and" || expr.Op.Type == "or" {
 			return s.combineBool(expr)
 		}
-		panic("TODO")
-	case *ExprNot:
-		panic("TODO")
+		left, err := s.Eval(expr.Left)
+		if err != nil {
+			return nil, err
+		}
+		right, err := s.Eval(expr.Right)
+		if err != nil {
+			return nil, err
+		}
+		if expr.Op.Type == "==" || expr.Op.Type == "!=" {
+			val := s.equalityTest(expr, left, right)
+			if expr.Op.Type == "!=" {
+				val = !val
+			}
+			return ValBool{val: val}, nil
+		}
+		op, found := operations[opkey{
+			op:    expr.Op.Type,
+			left:  typename(left),
+			right: typename(right),
+		}]
+		if !found {
+			return nil, NewRuntimeError(expr.Token,
+				"unsupported operation: %s %s %s",
+				typename(left), expr.Op.Type, typename(right))
+		}
+		return op(expr.Token, left, right)
 	case *ExprIndex:
 		panic("TODO")
 	case *ExprFuncCall:
-		panic("TODO")
-	case *ExprNegative:
 		panic("TODO")
 	default:
 		panic(fmt.Sprintf("unsupported expression: %#T", expr))
@@ -186,4 +268,104 @@ func (s *Scope) combineBool(op *ExprOp) (Value, error) {
 		return leftbool, nil
 	}
 	return s.Eval(op.Right)
+}
+
+func (s *Scope) equalityTest(expr Expr, left, right Value) bool {
+	if typename(left) != typename(right) {
+		return false
+	}
+	switch left.(type) {
+	case ValNumber:
+		return left.(ValNumber).val.Cmp(right.(ValNumber).val) == 0
+	case ValString:
+		return left.(ValString).val == right.(ValString).val
+	case ValBool:
+		return left.(ValBool).val == right.(ValBool).val
+	default:
+		return false // TODO: throw an error about comparing funcs or procs?
+	}
+}
+
+type opkey struct{ op, left, right string }
+
+func typename(val interface{}) string { return fmt.Sprintf("%T", val) }
+
+var operations = map[opkey]func(t *Token, left, right Value) (Value, error){
+	opkey{"+", typename(ValNumber{}), typename(ValNumber{})}: func(
+		t *Token, left, right Value) (Value, error) {
+		return ValNumber{
+			val: new(big.Rat).Add(left.(ValNumber).val, right.(ValNumber).val)}, nil
+	},
+	opkey{"-", typename(ValNumber{}), typename(ValNumber{})}: func(
+		t *Token, left, right Value) (Value, error) {
+		return ValNumber{
+			val: new(big.Rat).Sub(left.(ValNumber).val, right.(ValNumber).val)}, nil
+	},
+	opkey{"*", typename(ValNumber{}), typename(ValNumber{})}: func(
+		t *Token, left, right Value) (Value, error) {
+		return ValNumber{
+			val: new(big.Rat).Mul(left.(ValNumber).val, right.(ValNumber).val)}, nil
+	},
+	opkey{"/", typename(ValNumber{}), typename(ValNumber{})}: func(
+		t *Token, left, right Value) (Value, error) {
+		if new(big.Rat).Cmp(right.(ValNumber).val) == 0 {
+			return nil, NewRuntimeError(t, "Division by zero")
+		}
+		return ValNumber{
+			val: new(big.Rat).Mul(left.(ValNumber).val,
+				new(big.Rat).Inv(right.(ValNumber).val))}, nil
+	},
+	opkey{"%", typename(ValNumber{}), typename(ValNumber{})}: func(
+		t *Token, left, right Value) (Value, error) {
+		if new(big.Rat).Cmp(right.(ValNumber).val) == 0 {
+			return nil, NewRuntimeError(t, "Division by zero")
+		}
+		leftdenom := left.(ValNumber).val.Denom()
+		rightdenom := right.(ValNumber).val.Denom()
+		if !leftdenom.IsInt64() || leftdenom.Int64() != 1 ||
+			!rightdenom.IsInt64() || rightdenom.Int64() != 1 {
+			return nil, NewRuntimeError(t, "Modulo only works on integers")
+		}
+		return ValNumber{
+			val: new(big.Rat).SetInt(
+				new(big.Int).Mod(
+					left.(ValNumber).val.Num(),
+					right.(ValNumber).val.Num()))}, nil
+	},
+	opkey{"+", typename(ValString{}), typename(ValString{})}: func(
+		t *Token, left, right Value) (Value, error) {
+		return ValString{val: left.(ValString).val + right.(ValString).val}, nil
+	},
+	opkey{"<", typename(ValNumber{}), typename(ValNumber{})}: func(
+		t *Token, left, right Value) (Value, error) {
+		return ValBool{val: left.(ValNumber).val.Cmp(right.(ValNumber).val) < 0}, nil
+	},
+	opkey{"<=", typename(ValNumber{}), typename(ValNumber{})}: func(
+		t *Token, left, right Value) (Value, error) {
+		return ValBool{val: left.(ValNumber).val.Cmp(right.(ValNumber).val) <= 0}, nil
+	},
+	opkey{">", typename(ValNumber{}), typename(ValNumber{})}: func(
+		t *Token, left, right Value) (Value, error) {
+		return ValBool{val: left.(ValNumber).val.Cmp(right.(ValNumber).val) > 0}, nil
+	},
+	opkey{">=", typename(ValNumber{}), typename(ValNumber{})}: func(
+		t *Token, left, right Value) (Value, error) {
+		return ValBool{val: left.(ValNumber).val.Cmp(right.(ValNumber).val) >= 0}, nil
+	},
+	opkey{"<", typename(ValString{}), typename(ValString{})}: func(
+		t *Token, left, right Value) (Value, error) {
+		return ValBool{val: left.(ValString).val < right.(ValString).val}, nil
+	},
+	opkey{"<=", typename(ValString{}), typename(ValString{})}: func(
+		t *Token, left, right Value) (Value, error) {
+		return ValBool{val: left.(ValString).val <= right.(ValString).val}, nil
+	},
+	opkey{">", typename(ValString{}), typename(ValString{})}: func(
+		t *Token, left, right Value) (Value, error) {
+		return ValBool{val: left.(ValString).val >= right.(ValString).val}, nil
+	},
+	opkey{">=", typename(ValString{}), typename(ValString{})}: func(
+		t *Token, left, right Value) (Value, error) {
+		return ValBool{val: left.(ValString).val >= right.(ValString).val}, nil
+	},
 }

@@ -93,15 +93,11 @@ func (t *Tokenizer) Next() (*Token, error) {
 			return nil, NewSyntaxError(t.line, t.charpos,
 				"Unexpected underscore after number")
 		}
-		typ := "int"
-		if decimal {
-			typ = "float"
-		}
 		return &Token{
 			Line:   t.line,
 			Start:  start,
 			Length: t.charpos - start,
-			Type:   typ,
+			Type:   "number",
 			Val:    string(t.chars[start:t.charpos])}, nil
 	}
 

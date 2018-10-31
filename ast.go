@@ -246,21 +246,12 @@ func (e *ExprString) String() string {
 	return fmt.Sprintf("%#v", e.Val)
 }
 
-type ExprInt struct {
-	Token *Token
-	Val   *big.Int
-}
-
-func (e *ExprInt) String() string {
-	return fmt.Sprintf("%d", e.Val)
-}
-
-type ExprFloat struct {
+type ExprNumber struct {
 	Token *Token
 	Val   *big.Rat
 }
 
-func (e *ExprFloat) String() string {
+func (e *ExprNumber) String() string {
 	return fmt.Sprintf("%s", e.Val)
 }
 
@@ -335,8 +326,7 @@ func (e *ExprNegative) String() string {
 
 func (*ExprVar) expression()      {}
 func (*ExprString) expression()   {}
-func (*ExprInt) expression()      {}
-func (*ExprFloat) expression()    {}
+func (*ExprNumber) expression()   {}
 func (*ExprBool) expression()     {}
 func (*ExprOp) expression()       {}
 func (*ExprNot) expression()      {}
