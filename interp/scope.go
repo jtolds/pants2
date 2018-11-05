@@ -1,8 +1,10 @@
-package main
+package interp
 
 import (
 	"fmt"
 	"math/big"
+
+	"github.com/jtolds/pants2/ast"
 )
 
 type Scope struct {
@@ -17,7 +19,7 @@ func NewScope() *Scope {
 
 func (s *Scope) Define(name string, val Value) {
 	s.vars[name] = &ValueCell{
-		Def: &Line{Filename: "<builtin>"},
+		Def: &ast.Line{Filename: "<builtin>"},
 		Val: val,
 	}
 }
@@ -32,7 +34,7 @@ func (s *Scope) Copy() *Scope {
 	return c
 }
 
-func (s *Scope) RunAll(stmts []Stmt) error {
+func (s *Scope) RunAll(stmts []ast.Stmt) error {
 	for _, stmt := range stmts {
 		err := s.Run(stmt)
 		if err != nil {
@@ -42,9 +44,9 @@ func (s *Scope) RunAll(stmts []Stmt) error {
 	return nil
 }
 
-func (s *Scope) Run(stmt Stmt) error {
+func (s *Scope) Run(stmt ast.Stmt) error {
 	switch stmt := stmt.(type) {
-	case *StmtVar:
+	case *ast.StmtVar:
 		for _, v := range stmt.Vars {
 			if d, exists := s.vars[v.Token.Val]; exists {
 				return NewRuntimeError(v.Token,
@@ -56,7 +58,7 @@ func (s *Scope) Run(stmt Stmt) error {
 			s.vars[v.Token.Val] = &ValueCell{Def: v.Token.Line}
 		}
 		return nil
-	case *StmtAssignment:
+	case *ast.StmtAssignment:
 		if _, exists := s.vars[stmt.Lhs.Token.Val]; !exists {
 			return NewRuntimeError(stmt.Lhs.Token,
 				"Variable %v not defined", stmt.Lhs.Token.Val)
@@ -67,7 +69,7 @@ func (s *Scope) Run(stmt Stmt) error {
 		}
 		s.vars[stmt.Lhs.Token.Val].Val = val
 		return nil
-	case *StmtProcCall:
+	case *ast.StmtProcCall:
 		procval, err := s.Eval(stmt.Proc)
 		if err != nil {
 			return err
@@ -87,7 +89,7 @@ func (s *Scope) Run(stmt Stmt) error {
 			args = append(args, val)
 		}
 		return proc.Call(stmt.Token, args)
-	case *StmtIf:
+	case *ast.StmtIf:
 		test, err := s.Eval(stmt.Test)
 		if err != nil {
 			return err
@@ -97,7 +99,7 @@ func (s *Scope) Run(stmt Stmt) error {
 			return NewRuntimeError(stmt.Token,
 				"if statement requires a truth value, got %#v instead.", test)
 		}
-		if testbool.val {
+		if testbool.Val {
 			if len(stmt.Body) > 0 {
 				return s.Copy().RunAll(stmt.Body)
 			}
@@ -107,7 +109,7 @@ func (s *Scope) Run(stmt Stmt) error {
 			}
 		}
 		return nil
-	case *StmtWhile:
+	case *ast.StmtWhile:
 		for {
 			test, err := s.Eval(stmt.Test)
 			if err != nil {
@@ -118,7 +120,7 @@ func (s *Scope) Run(stmt Stmt) error {
 				return NewRuntimeError(stmt.Token,
 					"while statement requires a truth value, got %#v instead.", test)
 			}
-			if !testbool.val {
+			if !testbool.Val {
 				return nil
 			}
 			err = s.Copy().RunAll(stmt.Body)
@@ -131,7 +133,7 @@ func (s *Scope) Run(stmt Stmt) error {
 				}
 			}
 		}
-	case *StmtProcDef:
+	case *ast.StmtProcDef:
 		if d, exists := s.vars[stmt.Name.Token.Val]; exists {
 			return NewRuntimeError(stmt.Name.Token,
 				"Variable %v already defined on file %#v, line %d",
@@ -146,7 +148,7 @@ func (s *Scope) Run(stmt Stmt) error {
 				args:  stmt.Args,
 				body:  stmt.Body}}
 		return nil
-	case *StmtUndefine:
+	case *ast.StmtUndefine:
 		for _, v := range stmt.Vars {
 			if _, exists := s.vars[v.Token.Val]; !exists {
 				return NewRuntimeError(v.Token,
@@ -157,7 +159,7 @@ func (s *Scope) Run(stmt Stmt) error {
 			delete(s.vars, v.Token.Val)
 		}
 		return nil
-	case *StmtFuncDef:
+	case *ast.StmtFuncDef:
 		if d, exists := s.vars[stmt.Name.Token.Val]; exists {
 			return NewRuntimeError(stmt.Name.Token,
 				"Variable %v already defined on file %#v, line %d",
@@ -172,19 +174,19 @@ func (s *Scope) Run(stmt Stmt) error {
 				args:  stmt.Args,
 				body:  stmt.Body}}
 		return nil
-	case *StmtControl:
+	case *ast.StmtControl:
 		return NewControlError(stmt.Token, nil)
-	case *StmtReturn:
+	case *ast.StmtReturn:
 		val, err := s.Eval(stmt.Val)
 		if err != nil {
 			return err
 		}
 		return NewControlError(stmt.Token, val)
-	case *StmtImport:
+	case *ast.StmtImport:
 		panic("TODO")
-	case *StmtUnimport:
+	case *ast.StmtUnimport:
 		panic("TODO")
-	case *StmtExport:
+	case *ast.StmtExport:
 		panic("TODO")
 	default:
 		panic(fmt.Sprintf("unsupported statement: %#T", stmt))
@@ -192,9 +194,9 @@ func (s *Scope) Run(stmt Stmt) error {
 	// unreachable
 }
 
-func (s *Scope) Eval(expr Expr) (Value, error) {
+func (s *Scope) Eval(expr ast.Expr) (Value, error) {
 	switch expr := expr.(type) {
-	case *ExprVar:
+	case *ast.ExprVar:
 		name := expr.Var.Token.Val
 		if _, defined := s.vars[name]; !defined {
 			return nil, NewRuntimeError(expr.Token,
@@ -206,13 +208,13 @@ func (s *Scope) Eval(expr Expr) (Value, error) {
 				"Variable %v defined but not initialized", name)
 		}
 		return rv, nil
-	case *ExprString:
-		return ValString{val: expr.Val}, nil
-	case *ExprNumber:
-		return ValNumber{val: expr.Val}, nil
-	case *ExprBool:
-		return ValBool{val: expr.Val}, nil
-	case *ExprNot:
+	case *ast.ExprString:
+		return ValString{Val: expr.Val}, nil
+	case *ast.ExprNumber:
+		return ValNumber{Val: expr.Val}, nil
+	case *ast.ExprBool:
+		return ValBool{Val: expr.Val}, nil
+	case *ast.ExprNot:
 		test, err := s.Eval(expr.Expr)
 		if err != nil {
 			return nil, err
@@ -222,8 +224,8 @@ func (s *Scope) Eval(expr Expr) (Value, error) {
 			return nil, NewRuntimeError(expr.Token,
 				"not statement requires a truth value, got %#v instead.", test)
 		}
-		return ValBool{val: !testbool.val}, nil
-	case *ExprNegative:
+		return ValBool{Val: !testbool.Val}, nil
+	case *ast.ExprNegative:
 		val, err := s.Eval(expr.Expr)
 		if err != nil {
 			return nil, err
@@ -231,12 +233,12 @@ func (s *Scope) Eval(expr Expr) (Value, error) {
 		switch val := val.(type) {
 		case ValNumber:
 			n := new(big.Rat)
-			return ValNumber{val: n.Neg(val.val)}, nil
+			return ValNumber{Val: n.Neg(val.Val)}, nil
 		default:
 			return nil, NewRuntimeError(expr.Token,
 				"negative requires a number, got %#v instead.", val)
 		}
-	case *ExprOp:
+	case *ast.ExprOp:
 		if expr.Op.Type == "and" || expr.Op.Type == "or" {
 			return s.combineBool(expr)
 		}
@@ -253,7 +255,7 @@ func (s *Scope) Eval(expr Expr) (Value, error) {
 			if expr.Op.Type == "!=" {
 				val = !val
 			}
-			return ValBool{val: val}, nil
+			return ValBool{Val: val}, nil
 		}
 		op, found := operations[opkey{
 			op:    expr.Op.Type,
@@ -266,9 +268,9 @@ func (s *Scope) Eval(expr Expr) (Value, error) {
 				typename(left), expr.Op.Type, typename(right))
 		}
 		return op(expr.Token, left, right)
-	case *ExprIndex:
+	case *ast.ExprIndex:
 		panic("TODO")
-	case *ExprFuncCall:
+	case *ast.ExprFuncCall:
 		funcval, err := s.Eval(expr.Func)
 		if err != nil {
 			return nil, err
@@ -294,7 +296,7 @@ func (s *Scope) Eval(expr Expr) (Value, error) {
 	// unreachable
 }
 
-func (s *Scope) combineBool(op *ExprOp) (Value, error) {
+func (s *Scope) combineBool(op *ast.ExprOp) (Value, error) {
 	left, err := s.Eval(op.Left)
 	if err != nil {
 		return nil, err
@@ -304,24 +306,24 @@ func (s *Scope) combineBool(op *ExprOp) (Value, error) {
 		return nil, NewRuntimeError(op.Token,
 			"Operation \"%s\" expects truth value on left side.", op.Op.Type)
 	}
-	if (op.Op.Type == "or" && leftbool.val) ||
-		(op.Op.Type == "and" && !leftbool.val) {
+	if (op.Op.Type == "or" && leftbool.Val) ||
+		(op.Op.Type == "and" && !leftbool.Val) {
 		return leftbool, nil
 	}
 	return s.Eval(op.Right)
 }
 
-func (s *Scope) equalityTest(expr Expr, left, right Value) bool {
+func (s *Scope) equalityTest(expr ast.Expr, left, right Value) bool {
 	if typename(left) != typename(right) {
 		return false
 	}
 	switch left.(type) {
 	case ValNumber:
-		return left.(ValNumber).val.Cmp(right.(ValNumber).val) == 0
+		return left.(ValNumber).Val.Cmp(right.(ValNumber).Val) == 0
 	case ValString:
-		return left.(ValString).val == right.(ValString).val
+		return left.(ValString).Val == right.(ValString).Val
 	case ValBool:
-		return left.(ValBool).val == right.(ValBool).val
+		return left.(ValBool).Val == right.(ValBool).Val
 	default:
 		return false // TODO: throw an error about comparing funcs or procs?
 	}
@@ -331,82 +333,83 @@ type opkey struct{ op, left, right string }
 
 func typename(val interface{}) string { return fmt.Sprintf("%T", val) }
 
-var operations = map[opkey]func(t *Token, left, right Value) (Value, error){
+var operations = map[opkey]func(t *ast.Token, left, right Value) (
+	Value, error){
 	opkey{"+", typename(ValNumber{}), typename(ValNumber{})}: func(
-		t *Token, left, right Value) (Value, error) {
+		t *ast.Token, left, right Value) (Value, error) {
 		return ValNumber{
-			val: new(big.Rat).Add(left.(ValNumber).val, right.(ValNumber).val)}, nil
+			Val: new(big.Rat).Add(left.(ValNumber).Val, right.(ValNumber).Val)}, nil
 	},
 	opkey{"-", typename(ValNumber{}), typename(ValNumber{})}: func(
-		t *Token, left, right Value) (Value, error) {
+		t *ast.Token, left, right Value) (Value, error) {
 		return ValNumber{
-			val: new(big.Rat).Sub(left.(ValNumber).val, right.(ValNumber).val)}, nil
+			Val: new(big.Rat).Sub(left.(ValNumber).Val, right.(ValNumber).Val)}, nil
 	},
 	opkey{"*", typename(ValNumber{}), typename(ValNumber{})}: func(
-		t *Token, left, right Value) (Value, error) {
+		t *ast.Token, left, right Value) (Value, error) {
 		return ValNumber{
-			val: new(big.Rat).Mul(left.(ValNumber).val, right.(ValNumber).val)}, nil
+			Val: new(big.Rat).Mul(left.(ValNumber).Val, right.(ValNumber).Val)}, nil
 	},
 	opkey{"/", typename(ValNumber{}), typename(ValNumber{})}: func(
-		t *Token, left, right Value) (Value, error) {
-		if new(big.Rat).Cmp(right.(ValNumber).val) == 0 {
+		t *ast.Token, left, right Value) (Value, error) {
+		if new(big.Rat).Cmp(right.(ValNumber).Val) == 0 {
 			return nil, NewRuntimeError(t, "Division by zero")
 		}
 		return ValNumber{
-			val: new(big.Rat).Mul(left.(ValNumber).val,
-				new(big.Rat).Inv(right.(ValNumber).val))}, nil
+			Val: new(big.Rat).Mul(left.(ValNumber).Val,
+				new(big.Rat).Inv(right.(ValNumber).Val))}, nil
 	},
 	opkey{"%", typename(ValNumber{}), typename(ValNumber{})}: func(
-		t *Token, left, right Value) (Value, error) {
-		if new(big.Rat).Cmp(right.(ValNumber).val) == 0 {
+		t *ast.Token, left, right Value) (Value, error) {
+		if new(big.Rat).Cmp(right.(ValNumber).Val) == 0 {
 			return nil, NewRuntimeError(t, "Division by zero")
 		}
-		leftdenom := left.(ValNumber).val.Denom()
-		rightdenom := right.(ValNumber).val.Denom()
+		leftdenom := left.(ValNumber).Val.Denom()
+		rightdenom := right.(ValNumber).Val.Denom()
 		if !leftdenom.IsInt64() || leftdenom.Int64() != 1 ||
 			!rightdenom.IsInt64() || rightdenom.Int64() != 1 {
 			return nil, NewRuntimeError(t, "Modulo only works on integers")
 		}
 		return ValNumber{
-			val: new(big.Rat).SetInt(
+			Val: new(big.Rat).SetInt(
 				new(big.Int).Mod(
-					left.(ValNumber).val.Num(),
-					right.(ValNumber).val.Num()))}, nil
+					left.(ValNumber).Val.Num(),
+					right.(ValNumber).Val.Num()))}, nil
 	},
 	opkey{"+", typename(ValString{}), typename(ValString{})}: func(
-		t *Token, left, right Value) (Value, error) {
-		return ValString{val: left.(ValString).val + right.(ValString).val}, nil
+		t *ast.Token, left, right Value) (Value, error) {
+		return ValString{Val: left.(ValString).Val + right.(ValString).Val}, nil
 	},
 	opkey{"<", typename(ValNumber{}), typename(ValNumber{})}: func(
-		t *Token, left, right Value) (Value, error) {
-		return ValBool{val: left.(ValNumber).val.Cmp(right.(ValNumber).val) < 0}, nil
+		t *ast.Token, left, right Value) (Value, error) {
+		return ValBool{Val: left.(ValNumber).Val.Cmp(right.(ValNumber).Val) < 0}, nil
 	},
 	opkey{"<=", typename(ValNumber{}), typename(ValNumber{})}: func(
-		t *Token, left, right Value) (Value, error) {
-		return ValBool{val: left.(ValNumber).val.Cmp(right.(ValNumber).val) <= 0}, nil
+		t *ast.Token, left, right Value) (Value, error) {
+		return ValBool{Val: left.(ValNumber).Val.Cmp(right.(ValNumber).Val) <= 0}, nil
 	},
 	opkey{">", typename(ValNumber{}), typename(ValNumber{})}: func(
-		t *Token, left, right Value) (Value, error) {
-		return ValBool{val: left.(ValNumber).val.Cmp(right.(ValNumber).val) > 0}, nil
+		t *ast.Token, left, right Value) (Value, error) {
+		return ValBool{Val: left.(ValNumber).Val.Cmp(right.(ValNumber).Val) > 0}, nil
 	},
 	opkey{">=", typename(ValNumber{}), typename(ValNumber{})}: func(
-		t *Token, left, right Value) (Value, error) {
-		return ValBool{val: left.(ValNumber).val.Cmp(right.(ValNumber).val) >= 0}, nil
+		t *ast.Token, left, right Value) (Value, error) {
+		return ValBool{Val: left.(ValNumber).Val.Cmp(right.(ValNumber).Val) >= 0}, nil
 	},
 	opkey{"<", typename(ValString{}), typename(ValString{})}: func(
-		t *Token, left, right Value) (Value, error) {
-		return ValBool{val: left.(ValString).val < right.(ValString).val}, nil
+		t *ast.Token, left, right Value) (Value, error) {
+		return ValBool{Val: left.(ValString).Val < right.(ValString).Val}, nil
 	},
 	opkey{"<=", typename(ValString{}), typename(ValString{})}: func(
-		t *Token, left, right Value) (Value, error) {
-		return ValBool{val: left.(ValString).val <= right.(ValString).val}, nil
+		t *ast.Token, left, right Value) (Value, error) {
+		return ValBool{Val: left.(ValString).Val <= right.(ValString).Val}, nil
 	},
 	opkey{">", typename(ValString{}), typename(ValString{})}: func(
-		t *Token, left, right Value) (Value, error) {
-		return ValBool{val: left.(ValString).val >= right.(ValString).val}, nil
+		t *ast.Token, left, right Value) (Value, error) {
+		return ValBool{Val: left.(ValString).Val >= right.(ValString).Val}, nil
 	},
 	opkey{">=", typename(ValString{}), typename(ValString{})}: func(
-		t *Token, left, right Value) (Value, error) {
-		return ValBool{val: left.(ValString).val >= right.(ValString).val}, nil
+		t *ast.Token, left, right Value) (Value, error) {
+		return ValBool{Val: left.(ValString).Val >= right.(ValString).Val}, nil
 	},
 }

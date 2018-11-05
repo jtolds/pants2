@@ -1,9 +1,11 @@
-package main
+package interp
 
 import (
 	"fmt"
 	"math/big"
 	"strings"
+
+	"github.com/jtolds/pants2/ast"
 )
 
 type Value interface {
@@ -11,36 +13,36 @@ type Value interface {
 	value()
 }
 
-type ValNumber struct{ val *big.Rat }
+type ValNumber struct{ Val *big.Rat }
 
 func (v ValNumber) String() string {
-	return strings.TrimRight(strings.TrimRight(v.val.FloatString(10), "0"), ".")
+	return strings.TrimRight(strings.TrimRight(v.Val.FloatString(10), "0"), ".")
 }
 
-type ValString struct{ val string }
+type ValString struct{ Val string }
 
-func (v ValString) String() string { return v.val }
+func (v ValString) String() string { return v.Val }
 
-type ValBool struct{ val bool }
+type ValBool struct{ Val bool }
 
-func (v ValBool) String() string { return fmt.Sprint(v.val) }
+func (v ValBool) String() string { return fmt.Sprint(v.Val) }
 
 type ValProc interface {
-	Call(t *Token, args []Value) error
+	Call(t *ast.Token, args []Value) error
 	Value
 }
 
 type UserProc struct {
-	def   *Token
+	def   *ast.Token
 	name  string
 	scope *Scope
-	args  []*Var
-	body  []Stmt
+	args  []*ast.Var
+	body  []ast.Stmt
 }
 
 func (p *UserProc) value()         {}
 func (p *UserProc) String() string { return p.name }
-func (p *UserProc) Call(t *Token, args []Value) error {
+func (p *UserProc) Call(t *ast.Token, args []Value) error {
 	if len(args) != len(p.args) {
 		return NewRuntimeError(t,
 			"Expected %d arguments but got %d", len(p.args), len(args))
@@ -75,26 +77,26 @@ func (p *UserProc) Call(t *Token, args []Value) error {
 
 type ProcCB func([]Value) error
 
-func (f ProcCB) value()                            {}
-func (f ProcCB) String() string                    { return "<builtin>" }
-func (f ProcCB) Call(t *Token, args []Value) error { return f(args) }
+func (f ProcCB) value()                                {}
+func (f ProcCB) String() string                        { return "<builtin>" }
+func (f ProcCB) Call(t *ast.Token, args []Value) error { return f(args) }
 
 type ValFunc interface {
-	Call(t *Token, args []Value) (Value, error)
+	Call(t *ast.Token, args []Value) (Value, error)
 	Value
 }
 
 type UserFunc struct {
-	def   *Token
+	def   *ast.Token
 	name  string
 	scope *Scope
-	args  []*Var
-	body  []Stmt
+	args  []*ast.Var
+	body  []ast.Stmt
 }
 
 func (f *UserFunc) value()         {}
 func (f *UserFunc) String() string { return f.name + "()" }
-func (f *UserFunc) Call(t *Token, args []Value) (Value, error) {
+func (f *UserFunc) Call(t *ast.Token, args []Value) (Value, error) {
 	if len(args) != len(f.args) {
 		return nil, NewRuntimeError(t,
 			"Expected %d arguments but got %d", len(f.args), len(args))
@@ -133,15 +135,15 @@ func (f *UserFunc) Call(t *Token, args []Value) (Value, error) {
 
 type FuncCB func([]Value) (Value, error)
 
-func (f FuncCB) value()                                     {}
-func (f FuncCB) String() string                             { return "<builtin>" }
-func (f FuncCB) Call(t *Token, args []Value) (Value, error) { return f(args) }
+func (f FuncCB) value()                                         {}
+func (f FuncCB) String() string                                 { return "<builtin>" }
+func (f FuncCB) Call(t *ast.Token, args []Value) (Value, error) { return f(args) }
 
 func (v ValNumber) value() {}
 func (v ValString) value() {}
 func (v ValBool) value()   {}
 
 type ValueCell struct {
-	Def *Line
+	Def *ast.Line
 	Val Value
 }
