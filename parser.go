@@ -61,6 +61,7 @@ loop:
 				return nil, err
 			}
 			if nextToken.Type == "=" {
+				// TODO index assignment?
 				return parseAssignment(token, tokens)
 			}
 			tokens.Push(nextToken)
@@ -164,11 +165,6 @@ func parseExprOrder2(tokens *TokenSource) (Expr, error) {
 	case "(": // function call
 		var args []Expr
 		for {
-			arg, err := parseExpression(tokens, true)
-			if err != nil {
-				return nil, err
-			}
-			args = append(args, arg)
 			end, err := tokens.NextToken()
 			if err != nil {
 				return nil, err
@@ -176,11 +172,18 @@ func parseExprOrder2(tokens *TokenSource) (Expr, error) {
 			if end.Type == ")" {
 				break
 			}
-			if end.Type != "," {
+			if len(args) == 0 {
+				tokens.Push(end)
+			} else if end.Type != "," {
 				return nil, NewSyntaxErrorFromToken(end,
 					"Unexpected token %#v. Expecting closing parenthesis or comma.",
 					end.Type)
 			}
+			arg, err := parseExpression(tokens, true)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, arg)
 		}
 		return &ExprFuncCall{
 			Token: tok,

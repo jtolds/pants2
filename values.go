@@ -31,6 +31,7 @@ type ValProc interface {
 }
 
 type UserProc struct {
+	def   *Token
 	name  string
 	scope *Scope
 	args  []*Var
@@ -58,7 +59,18 @@ func (p *UserProc) Call(t *Token, args []Value) error {
 			Val: args[i],
 		}
 	}
-	return s.RunAll(p.body)
+	err := s.RunAll(p.body)
+	if ce, ok := err.(*ControlError); ok {
+		switch ce.typ {
+		case CtrlBreak, CtrlNext, CtrlReturn:
+			return NewRuntimeError(ce.token, "Unexpected \"%s\"", string(ce.typ))
+		case CtrlDone:
+			return nil
+		default:
+			panic(fmt.Sprintf("unknown control type: %s", string(ce.typ)))
+		}
+	}
+	return err
 }
 
 type ProcCB func([]Value) error
@@ -71,6 +83,59 @@ type ValFunc interface {
 	Call(t *Token, args []Value) (Value, error)
 	Value
 }
+
+type UserFunc struct {
+	def   *Token
+	name  string
+	scope *Scope
+	args  []*Var
+	body  []Stmt
+}
+
+func (f *UserFunc) value()         {}
+func (f *UserFunc) String() string { return f.name + "()" }
+func (f *UserFunc) Call(t *Token, args []Value) (Value, error) {
+	if len(args) != len(f.args) {
+		return nil, NewRuntimeError(t,
+			"Expected %d arguments but got %d", len(f.args), len(args))
+	}
+	for _, arg := range f.args {
+		if d, exists := f.scope.vars[arg.Token.Val]; exists {
+			return nil, NewRuntimeError(arg.Token,
+				"Variable %v already defined on file %#v, line %d",
+				arg.Token.Val, d.Def.Filename, d.Def.Lineno)
+		}
+	}
+	s := f.scope.Copy()
+	for i := range args {
+		s.vars[f.args[i].Token.Val] = &ValueCell{
+			Def: f.args[i].Token.Line,
+			Val: args[i],
+		}
+	}
+	err := s.RunAll(f.body)
+	if err == nil {
+		return nil, NewRuntimeError(f.def,
+			"Function exited with no return statement")
+	}
+	if ce, ok := err.(*ControlError); ok {
+		switch ce.typ {
+		case CtrlBreak, CtrlNext, CtrlDone:
+			return nil, NewRuntimeError(ce.token, "Unexpected \"%s\"", string(ce.typ))
+		case CtrlReturn:
+			return ce.val, nil
+		default:
+			panic(fmt.Sprintf("unknown control type: %s", string(ce.typ)))
+		}
+	}
+	return nil, err
+}
+
+type FuncCB func([]Value) (Value, error)
+
+func (f FuncCB) value()                                     {}
+func (f FuncCB) String() string                             { return "<builtin>" }
+func (f FuncCB) Call(t *Token, args []Value) (Value, error) { return f(args) }
 
 func (v ValNumber) value() {}
 func (v ValString) value() {}

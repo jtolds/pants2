@@ -239,6 +239,11 @@ func NewTokenSource(ls LineSource) *TokenSource {
 	return &TokenSource{ls: ls}
 }
 
+func (t *TokenSource) ResetLine() {
+	t.tokens = t.tokens[:0]
+	t.pushed = t.pushed[:0]
+}
+
 func (t *TokenSource) NextToken() (rv *Token, err error) {
 	if t.end {
 		return nil, io.EOF

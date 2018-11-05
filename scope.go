@@ -123,7 +123,12 @@ func (s *Scope) Run(stmt Stmt) error {
 			}
 			err = s.Copy().RunAll(stmt.Body)
 			if err != nil {
-				return err
+				if IsControlErrorType(err, CtrlBreak) {
+					return nil
+				}
+				if !IsControlErrorType(err, CtrlNext) {
+					return err
+				}
 			}
 		}
 	case *StmtProcDef:
@@ -135,6 +140,7 @@ func (s *Scope) Run(stmt Stmt) error {
 		s.vars[stmt.Name.Token.Val] = &ValueCell{
 			Def: stmt.Token.Line,
 			Val: &UserProc{
+				def:   stmt.Token,
 				name:  stmt.Name.Token.Val,
 				scope: s,
 				args:  stmt.Args,
@@ -151,17 +157,34 @@ func (s *Scope) Run(stmt Stmt) error {
 			delete(s.vars, v.Token.Val)
 		}
 		return nil
+	case *StmtFuncDef:
+		if d, exists := s.vars[stmt.Name.Token.Val]; exists {
+			return NewRuntimeError(stmt.Name.Token,
+				"Variable %v already defined on file %#v, line %d",
+				stmt.Name.Token.Val, d.Def.Filename, d.Def.Lineno)
+		}
+		s.vars[stmt.Name.Token.Val] = &ValueCell{
+			Def: stmt.Token.Line,
+			Val: &UserFunc{
+				def:   stmt.Token,
+				name:  stmt.Name.Token.Val,
+				scope: s,
+				args:  stmt.Args,
+				body:  stmt.Body}}
+		return nil
+	case *StmtControl:
+		return NewControlError(stmt.Token, nil)
+	case *StmtReturn:
+		val, err := s.Eval(stmt.Val)
+		if err != nil {
+			return err
+		}
+		return NewControlError(stmt.Token, val)
 	case *StmtImport:
 		panic("TODO")
 	case *StmtUnimport:
 		panic("TODO")
 	case *StmtExport:
-		panic("TODO")
-	case *StmtFuncDef:
-		panic("TODO")
-	case *StmtControl:
-		panic("TODO")
-	case *StmtReturn:
 		panic("TODO")
 	default:
 		panic(fmt.Sprintf("unsupported statement: %#T", stmt))
@@ -246,7 +269,25 @@ func (s *Scope) Eval(expr Expr) (Value, error) {
 	case *ExprIndex:
 		panic("TODO")
 	case *ExprFuncCall:
-		panic("TODO")
+		funcval, err := s.Eval(expr.Func)
+		if err != nil {
+			return nil, err
+		}
+		fn, ok := funcval.(ValFunc)
+		if !ok {
+			return nil, NewRuntimeError(expr.Token,
+				"Function call without function value. Unexpected value %s",
+				funcval)
+		}
+		args := make([]Value, 0, len(expr.Args))
+		for _, arg := range expr.Args {
+			val, err := s.Eval(arg)
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, val)
+		}
+		return fn.Call(expr.Token, args)
 	default:
 		panic(fmt.Sprintf("unsupported expression: %#T", expr))
 	}

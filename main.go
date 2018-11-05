@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"io"
+	"math/big"
 	"os"
+	"time"
 )
 
 func handleErr(err error) {
@@ -20,6 +22,10 @@ func handleErr(err error) {
 	}
 }
 
+func Time(args []Value) (Value, error) {
+	return ValNumber{val: big.NewRat(time.Now().UnixNano(), 1)}, nil
+}
+
 func Print(args []Value) error {
 	for _, arg := range args {
 		_, err := fmt.Print(arg)
@@ -34,6 +40,7 @@ func Print(args []Value) error {
 func main() {
 	m := NewScope()
 	m.Define("print", ProcCB(Print))
+	m.Define("time", FuncCB(Time))
 	ts := NewTokenSource(NewReaderLineSource("<stdin>", os.Stdin, func() error {
 		_, err := fmt.Printf("> ")
 		return err
@@ -45,8 +52,13 @@ func main() {
 				break
 			}
 			handleErr(err)
+			ts.ResetLine()
 			continue
 		}
-		handleErr(m.Run(stmt))
+		err = m.Run(stmt)
+		if err != nil {
+			handleErr(err)
+			ts.ResetLine()
+		}
 	}
 }
