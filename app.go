@@ -12,10 +12,10 @@ type App struct {
 	defaultScope *interp.Scope
 }
 
-func NewApp() *App {
-	return &App{
-		defaultScope: interp.NewScope(),
-	}
+func NewApp() (a *App) {
+	a = &App{}
+	a.defaultScope = interp.NewScope(interp.ModuleImporterFunc(a.importMod))
+	return a
 }
 
 func (a *App) Load(name string, input io.Reader) error {
@@ -77,4 +77,8 @@ func (a *App) LoadInteractive(input io.Reader, output io.Writer) error {
 
 func (a *App) Define(name string, value interp.Value) {
 	a.defaultScope.Define(name, value)
+}
+
+func (a *App) importMod(path string) (map[string]*interp.ValueCell, error) {
+	panic("TODO")
 }

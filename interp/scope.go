@@ -7,14 +7,28 @@ import (
 	"github.com/jtolds/pants2/ast"
 )
 
-type Scope struct {
-	vars    map[string]*ValueCell
-	exports map[string]*ValueCell
+type ModuleImporterFunc func(path string) (map[string]*ValueCell, error)
+
+func (f ModuleImporterFunc) Import(path string) (map[string]*ValueCell, error) {
+	return f(path)
 }
 
-func NewScope() *Scope {
+type ModuleImporter interface {
+	Import(path string) (map[string]*ValueCell, error)
+}
+
+type Scope struct {
+	vars      map[string]*ValueCell
+	exports   map[string]*ValueCell
+	importer  ModuleImporter
+	unimports map[string]map[string]bool
+}
+
+func NewScope(importer ModuleImporter) *Scope {
 	return &Scope{
-		vars: make(map[string]*ValueCell),
+		vars:      map[string]*ValueCell{},
+		importer:  importer,
+		unimports: map[string]map[string]bool{},
 	}
 }
 
@@ -35,9 +49,17 @@ func (s *Scope) Copy() *Scope {
 	c := &Scope{
 		vars: make(map[string]*ValueCell, len(s.vars)),
 		// deliberately don't copy exports
+		importer:  s.importer,
+		unimports: make(map[string]map[string]bool, len(s.unimports)),
 	}
 	for k, v := range s.vars {
 		c.vars[k] = v
+	}
+	for mod, vars := range s.unimports {
+		c.unimports[mod] = make(map[string]bool, len(vars))
+		for k, v := range vars {
+			c.unimports[mod][k] = v
+		}
 	}
 	return c
 }
@@ -165,6 +187,9 @@ func (s *Scope) Run(stmt ast.Stmt) error {
 		}
 		for _, v := range stmt.Vars {
 			delete(s.vars, v.Token.Val)
+			for mod := range s.unimports {
+				delete(s.unimports[mod], v.Token.Val)
+			}
 		}
 		return nil
 	case *ast.StmtFuncDef:
@@ -211,9 +236,39 @@ func (s *Scope) Run(stmt ast.Stmt) error {
 		}
 		return nil
 	case *ast.StmtImport:
-		panic("TODO")
+		exports, err := s.importer.Import(stmt.Path.Val)
+		if err != nil {
+			return err
+		}
+		var prefix string
+		if stmt.Prefix != nil {
+			prefix = stmt.Prefix.Token.Val
+		}
+		for v := range exports {
+			if d, exists := s.vars[prefix+v]; exists {
+				return NewRuntimeError(stmt.Token,
+					"Export defines %#v, but %#v already defined on file %#v, line %d",
+					prefix+v, prefix+v, d.Def.Filename, d.Def.Lineno)
+			}
+		}
+		unimports := make(map[string]bool, len(exports))
+		for v, cell := range exports {
+			s.vars[prefix+v] = cell
+			unimports[prefix+v] = true
+		}
+		s.unimports[stmt.Path.Val] = unimports
+		return nil
 	case *ast.StmtUnimport:
-		panic("TODO")
+		vars, exists := s.unimports[stmt.Path.Val]
+		if !exists {
+			return NewRuntimeError(stmt.Token, "Module %#v not imported",
+				stmt.Path.Val)
+		}
+		for v := range vars {
+			delete(s.vars, v)
+		}
+		delete(s.unimports, stmt.Path.Val)
+		return nil
 	default:
 		panic(fmt.Sprintf("unsupported statement: %#T", stmt))
 	}
