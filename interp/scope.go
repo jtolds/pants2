@@ -8,7 +8,8 @@ import (
 )
 
 type Scope struct {
-	vars map[string]*ValueCell
+	vars    map[string]*ValueCell
+	exports map[string]*ValueCell
 }
 
 func NewScope() *Scope {
@@ -24,9 +25,16 @@ func (s *Scope) Define(name string, val Value) {
 	}
 }
 
+func (s *Scope) EnableExports() {
+	if s.exports == nil {
+		s.exports = map[string]*ValueCell{}
+	}
+}
+
 func (s *Scope) Copy() *Scope {
 	c := &Scope{
 		vars: make(map[string]*ValueCell, len(s.vars)),
+		// deliberately don't copy exports
 	}
 	for k, v := range s.vars {
 		c.vars[k] = v
@@ -182,11 +190,29 @@ func (s *Scope) Run(stmt ast.Stmt) error {
 			return err
 		}
 		return NewControlError(stmt.Token, val)
+	case *ast.StmtExport:
+		if s.exports == nil {
+			return NewRuntimeError(stmt.Token, "Unexpected export")
+		}
+		for _, v := range stmt.Vars {
+			if d, exists := s.exports[v.Token.Val]; exists {
+				return NewRuntimeError(v.Token,
+					"Exported variable \"%s\" already exported on file %#v, line %d",
+					v.Token.Val, d.Def.Filename, d.Def.Lineno)
+			}
+		}
+		for _, v := range stmt.Vars {
+			cell, ok := s.vars[v.Token.Val]
+			if !ok {
+				return NewRuntimeError(v.Token,
+					"Variable %v not defined", v.Token.Val)
+			}
+			s.exports[v.Token.Val] = cell
+		}
+		return nil
 	case *ast.StmtImport:
 		panic("TODO")
 	case *ast.StmtUnimport:
-		panic("TODO")
-	case *ast.StmtExport:
 		panic("TODO")
 	default:
 		panic(fmt.Sprintf("unsupported statement: %#T", stmt))
