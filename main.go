@@ -28,7 +28,7 @@ func main() {
 	a := NewApp()
 	a.Define("print", interp.ProcCB(Print))
 	a.Define("time", interp.FuncCB(Time))
-	err := a.LoadInteractive(os.Stdin, os.Stderr)
+	_, err := a.LoadInteractive(os.Stdin, os.Stderr)
 	if err != nil {
 		panic(err)
 	}

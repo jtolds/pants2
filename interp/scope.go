@@ -39,10 +39,11 @@ func (s *Scope) Define(name string, val Value) {
 	}
 }
 
-func (s *Scope) EnableExports() {
+func (s *Scope) Exports() map[string]*ValueCell {
 	if s.exports == nil {
 		s.exports = map[string]*ValueCell{}
 	}
+	return s.exports
 }
 
 func (s *Scope) Copy() *Scope {
@@ -236,6 +237,9 @@ func (s *Scope) Run(stmt ast.Stmt) error {
 		}
 		return nil
 	case *ast.StmtImport:
+		if _, exists := s.unimports[stmt.Path.Val]; exists {
+			return NewRuntimeError(stmt.Token, "%#v already imported", stmt.Path.Val)
+		}
 		exports, err := s.importer.Import(stmt.Path.Val)
 		if err != nil {
 			return err

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/jtolds/pants2/ast"
 	"github.com/jtolds/pants2/interp"
@@ -10,36 +11,42 @@ import (
 
 type App struct {
 	defaultScope *interp.Scope
+	modules      map[string]map[string]*interp.ValueCell
 }
 
 func NewApp() (a *App) {
-	a = &App{}
+	a = &App{
+		modules: map[string]map[string]*interp.ValueCell{},
+	}
 	a.defaultScope = interp.NewScope(interp.ModuleImporterFunc(a.importMod))
 	return a
 }
 
-func (a *App) Load(name string, input io.Reader) error {
+func (a *App) Load(name string, input io.Reader) (
+	map[string]*interp.ValueCell, error) {
 	s := a.defaultScope.Copy()
-	s.EnableExports()
+	rv := s.Exports()
 	tokens := ast.NewTokenSource(ast.NewReaderLineSource(name, input, nil))
 	for {
 		stmt, err := ast.ParseStatement(tokens)
 		if err != nil {
 			if err == io.EOF {
-				return nil
+				a.modules[name] = rv
+				return rv, nil
 			}
-			return err
+			return nil, err
 		}
 		err = s.Run(stmt)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 }
 
-func (a *App) LoadInteractive(input io.Reader, output io.Writer) error {
+func (a *App) LoadInteractive(input io.Reader, output io.Writer) (
+	map[string]*interp.ValueCell, error) {
 	s := a.defaultScope.Copy()
-	s.EnableExports()
+	rv := s.Exports()
 	tokens := ast.NewTokenSource(ast.NewReaderLineSource("<stdin>", input,
 		func() error {
 			_, err := fmt.Fprintf(output, "> ")
@@ -49,14 +56,14 @@ func (a *App) LoadInteractive(input io.Reader, output io.Writer) error {
 		stmt, err := ast.ParseStatement(tokens)
 		if err != nil {
 			if err == io.EOF {
-				return nil
+				return rv, nil
 			}
 			if !interp.IsHandledError(err) {
-				return err
+				return nil, err
 			}
 			_, err = fmt.Fprintln(output, err)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			tokens.ResetLine()
 			continue
@@ -64,11 +71,11 @@ func (a *App) LoadInteractive(input io.Reader, output io.Writer) error {
 		err = s.Run(stmt)
 		if err != nil {
 			if !interp.IsHandledError(err) {
-				return err
+				return nil, err
 			}
 			_, err = fmt.Fprintln(output, err)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			tokens.ResetLine()
 		}
@@ -80,5 +87,19 @@ func (a *App) Define(name string, value interp.Value) {
 }
 
 func (a *App) importMod(path string) (map[string]*interp.ValueCell, error) {
-	panic("TODO")
+	rv, exists := a.modules[path]
+	if exists {
+		if rv == nil {
+			// TODO
+			return nil, fmt.Errorf("import cycle detected")
+		}
+		return rv, nil
+	}
+	fh, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer fh.Close()
+	a.modules[path] = nil
+	return a.Load(path, fh)
 }
