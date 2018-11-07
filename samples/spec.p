@@ -35,7 +35,7 @@ WHILE <expr> {
 }
 
 IMPORT <mod>
-IMPORT <mod> WITH PREFIX x.
+IMPORT <mod> WITHPREFIX x.
 UNIMPORT <mod>
 UNDEFINE <var>, <var>
 EXPORT <var>, <var>
@@ -49,7 +49,7 @@ PROC name var, var {
   DONE
 }
 
-CALL func
+CALL func()
 
 strings
 integers
