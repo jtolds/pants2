@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"math/big"
 	"os"
@@ -25,11 +26,23 @@ func Print(args []interp.Value) error {
 }
 
 func main() {
-	a := NewApp()
-	a.Define("print", interp.ProcCB(Print))
-	a.Define("time", interp.FuncCB(Time))
-	_, err := a.LoadInteractive(os.Stdin, os.Stderr)
+	err := Main()
 	if err != nil {
 		panic(err)
 	}
+}
+
+func Main() error {
+	a := NewApp()
+	a.Define("print", interp.ProcCB(Print))
+	a.Define("time", interp.FuncCB(Time))
+
+	flag.Parse()
+	file := flag.Arg(0)
+	if file != "" {
+		_, err := a.LoadFile(file)
+		return err
+	}
+	_, err := a.LoadInteractive(os.Stdin, os.Stderr)
+	return err
 }

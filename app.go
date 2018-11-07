@@ -24,6 +24,10 @@ func NewApp() (a *App) {
 
 func (a *App) Load(name string, input io.Reader) (
 	map[string]*interp.ValueCell, error) {
+	if _, exists := a.modules[name]; exists {
+		return nil, fmt.Errorf("%#v already loaded", name)
+	}
+	a.modules[name] = nil
 	s := a.defaultScope.Copy()
 	rv := s.Exports()
 	tokens := ast.NewTokenSource(ast.NewReaderLineSource(name, input, nil))
@@ -82,6 +86,15 @@ func (a *App) LoadInteractive(input io.Reader, output io.Writer) (
 	}
 }
 
+func (a *App) LoadFile(path string) (map[string]*interp.ValueCell, error) {
+	fh, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer fh.Close()
+	return a.Load(path, fh)
+}
+
 func (a *App) Define(name string, value interp.Value) {
 	a.defaultScope.Define(name, value)
 }
@@ -95,11 +108,5 @@ func (a *App) importMod(path string) (map[string]*interp.ValueCell, error) {
 		}
 		return rv, nil
 	}
-	fh, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer fh.Close()
-	a.modules[path] = nil
-	return a.Load(path, fh)
+	return a.LoadFile(path)
 }

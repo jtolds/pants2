@@ -246,7 +246,7 @@ func (s *Scope) Run(stmt ast.Stmt) error {
 		}
 		var prefix string
 		if stmt.Prefix != nil {
-			prefix = stmt.Prefix.Token.Val
+			prefix = stmt.Prefix.Token.Val + "_"
 		}
 		for v := range exports {
 			if d, exists := s.vars[prefix+v]; exists {
@@ -257,7 +257,10 @@ func (s *Scope) Run(stmt ast.Stmt) error {
 		}
 		unimports := make(map[string]bool, len(exports))
 		for v, cell := range exports {
-			s.vars[prefix+v] = cell
+			s.vars[prefix+v] = &ValueCell{
+				Def: stmt.Token.Line,
+				Val: cell.Val,
+			}
 			unimports[prefix+v] = true
 		}
 		s.unimports[stmt.Path.Val] = unimports
