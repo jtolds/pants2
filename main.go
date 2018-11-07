@@ -34,8 +34,10 @@ func main() {
 
 func Main() error {
 	a := NewApp()
-	a.Define("print", interp.ProcCB(Print))
-	a.Define("time", interp.FuncCB(Time))
+	a.Import("std", map[string]interp.Value{
+		"print": interp.ProcCB(Print),
+		"time":  interp.FuncCB(Time),
+	})
 
 	flag.Parse()
 	file := flag.Arg(0)

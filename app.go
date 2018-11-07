@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -20,6 +21,18 @@ func NewApp() (a *App) {
 	}
 	a.defaultScope = interp.NewScope(interp.ModuleImporterFunc(a.importMod))
 	return a
+}
+
+func (a *App) Import(name string, vals map[string]interp.Value) error {
+	cells := make(map[string]*interp.ValueCell, len(vals))
+	for name, val := range vals {
+		cells[name] = &interp.ValueCell{
+			Def: &ast.Line{},
+			Val: val,
+		}
+	}
+	a.modules[name] = cells
+	return a.defaultScope.Import(name, cells, "")
 }
 
 func (a *App) Load(name string, input io.Reader) (
@@ -92,11 +105,7 @@ func (a *App) LoadFile(path string) (map[string]*interp.ValueCell, error) {
 		return nil, err
 	}
 	defer fh.Close()
-	return a.Load(path, fh)
-}
-
-func (a *App) Define(name string, value interp.Value) {
-	a.defaultScope.Define(name, value)
+	return a.Load(path, bufio.NewReader(fh))
 }
 
 func (a *App) importMod(path string) (map[string]*interp.ValueCell, error) {

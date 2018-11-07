@@ -32,13 +32,6 @@ func NewScope(importer ModuleImporter) *Scope {
 	}
 }
 
-func (s *Scope) Define(name string, val Value) {
-	s.vars[name] = &ValueCell{
-		Def: &ast.Line{Filename: "<builtin>"},
-		Val: val,
-	}
-}
-
 func (s *Scope) Exports() map[string]*ValueCell {
 	if s.exports == nil {
 		s.exports = map[string]*ValueCell{}
@@ -237,49 +230,68 @@ func (s *Scope) Run(stmt ast.Stmt) error {
 		}
 		return nil
 	case *ast.StmtImport:
-		if _, exists := s.unimports[stmt.Path.Val]; exists {
-			return NewRuntimeError(stmt.Token, "%#v already imported", stmt.Path.Val)
-		}
 		exports, err := s.importer.Import(stmt.Path.Val)
 		if err != nil {
 			return err
 		}
 		var prefix string
 		if stmt.Prefix != nil {
-			prefix = stmt.Prefix.Token.Val + "_"
+			prefix = stmt.Prefix.Token.Val
 		}
-		for v := range exports {
-			if d, exists := s.vars[prefix+v]; exists {
-				return NewRuntimeError(stmt.Token,
-					"Export defines %#v, but %#v already defined on file %#v, line %d",
-					prefix+v, prefix+v, d.Def.Filename, d.Def.Lineno)
-			}
+		err = s.Import(stmt.Path.Val, exports, prefix)
+		if err != nil {
+			return NewRuntimeError(stmt.Token, "%s", err.Error())
 		}
-		unimports := make(map[string]bool, len(exports))
-		for v, cell := range exports {
-			s.vars[prefix+v] = &ValueCell{
-				Def: stmt.Token.Line,
-				Val: cell.Val,
-			}
-			unimports[prefix+v] = true
-		}
-		s.unimports[stmt.Path.Val] = unimports
 		return nil
 	case *ast.StmtUnimport:
-		vars, exists := s.unimports[stmt.Path.Val]
-		if !exists {
-			return NewRuntimeError(stmt.Token, "Module %#v not imported",
-				stmt.Path.Val)
+		err := s.Unimport(stmt.Path.Val)
+		if err != nil {
+			return NewRuntimeError(stmt.Token, "%s", err.Error())
 		}
-		for v := range vars {
-			delete(s.vars, v)
-		}
-		delete(s.unimports, stmt.Path.Val)
 		return nil
 	default:
 		panic(fmt.Sprintf("unsupported statement: %#T", stmt))
 	}
 	// unreachable
+}
+
+func (s *Scope) Import(path string, vals map[string]*ValueCell, prefix string) (
+	err error) {
+	if _, exists := s.unimports[path]; exists {
+		return fmt.Errorf("%#v already imported", path)
+	}
+	if prefix != "" {
+		prefix += "_"
+	}
+	for v := range vals {
+		if d, exists := s.vars[prefix+v]; exists {
+			return fmt.Errorf(
+				"Export defines %#v, but %#v already defined on file %#v, line %d",
+				prefix+v, prefix+v, d.Def.Filename, d.Def.Lineno)
+		}
+	}
+	unimports := make(map[string]bool, len(vals))
+	for v, cell := range vals {
+		s.vars[prefix+v] = &ValueCell{
+			Def: cell.Def,
+			Val: cell.Val,
+		}
+		unimports[prefix+v] = true
+	}
+	s.unimports[path] = unimports
+	return nil
+}
+
+func (s *Scope) Unimport(path string) error {
+	vars, exists := s.unimports[path]
+	if !exists {
+		return fmt.Errorf("Module %#v not imported", path)
+	}
+	for v := range vars {
+		delete(s.vars, v)
+	}
+	delete(s.unimports, path)
+	return nil
 }
 
 func (s *Scope) Eval(expr ast.Expr) (Value, error) {
