@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -12,27 +13,41 @@ import (
 
 type App struct {
 	defaultScope *interp.Scope
+	builtins     map[string]func() (map[string]interp.Value, error)
 	modules      map[string]map[string]*interp.ValueCell
 }
 
 func NewApp() (a *App) {
 	a = &App{
-		modules: map[string]map[string]*interp.ValueCell{},
+		builtins: map[string]func() (map[string]interp.Value, error){},
+		modules:  map[string]map[string]*interp.ValueCell{},
 	}
 	a.defaultScope = interp.NewScope(interp.ModuleImporterFunc(a.importMod))
 	return a
 }
 
-func (a *App) Import(name string, vals map[string]interp.Value) error {
-	cells := make(map[string]*interp.ValueCell, len(vals))
-	for name, val := range vals {
-		cells[name] = &interp.ValueCell{
-			Def: &ast.Line{},
-			Val: val,
+func (a *App) DefineModule(name string,
+	initfn func() (map[string]interp.Value, error)) {
+	a.builtins[name] = initfn
+}
+
+func (a *App) RunInDefaultScope(command string) error {
+	s := a.defaultScope
+	tokens := ast.NewTokenSource(ast.NewReaderLineSource("<builtin>",
+		bytes.NewReader([]byte(command)), nil))
+	for {
+		stmt, err := ast.ParseStatement(tokens)
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+		err = s.Run(stmt)
+		if err != nil {
+			return err
 		}
 	}
-	a.modules[name] = cells
-	return a.defaultScope.Import(name, cells, "")
 }
 
 func (a *App) Load(name string, input io.Reader) (
@@ -109,13 +124,27 @@ func (a *App) LoadFile(path string) (map[string]*interp.ValueCell, error) {
 }
 
 func (a *App) importMod(path string) (map[string]*interp.ValueCell, error) {
-	rv, exists := a.modules[path]
-	if exists {
+	if rv, exists := a.modules[path]; exists {
 		if rv == nil {
 			// TODO
 			return nil, fmt.Errorf("import cycle detected")
 		}
 		return rv, nil
+	}
+	if bi, exists := a.builtins[path]; exists {
+		vals, err := bi()
+		if err != nil {
+			return nil, err
+		}
+		cells := make(map[string]*interp.ValueCell, len(vals))
+		for name, val := range vals {
+			cells[name] = &interp.ValueCell{
+				Def: &ast.Line{},
+				Val: val,
+			}
+		}
+		a.modules[path] = cells
+		return cells, nil
 	}
 	return a.LoadFile(path)
 }

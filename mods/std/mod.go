@@ -1,4 +1,4 @@
-package main
+package std
 
 import (
 	"bytes"
@@ -113,15 +113,15 @@ func Random(args []interp.Value) (interp.Value, error) {
 		Val: new(big.Rat).Add(new(big.Rat).SetInt(z), low.Val)}, nil
 }
 
-var (
-	StdLib = map[string]interp.Value{
-		"print":   interp.ProcCB(Print),
-		"println": interp.ProcCB(Println),
-		"time":    interp.FuncCB(Time),
-		"input":   interp.FuncCB(Input),
-		"number":  interp.FuncCB(Number),
-		"random":  interp.FuncCB(Random),
-		"call":    interp.ProcCB(func([]interp.Value) error { return nil }),
-		"CALL":    interp.ProcCB(func([]interp.Value) error { return nil }),
-	}
-)
+func Mod() (map[string]interp.Value, error) {
+	return map[string]interp.Value{
+		// "print":   interp.ProcCB(Print),
+		// "println": interp.ProcCB(Println),
+		"time": interp.FuncCB(Time),
+		// "input":   interp.FuncCB(Input),
+		"number": interp.FuncCB(Number),
+		"random": interp.FuncCB(Random),
+		"call":   interp.ProcCB(func([]interp.Value) error { return nil }),
+		"CALL":   interp.ProcCB(func([]interp.Value) error { return nil }),
+	}, nil
+}
