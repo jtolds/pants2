@@ -33,6 +33,10 @@ type mod struct {
 	w     wde.Window
 	color color.RGBA
 	row   int
+
+	drawing   bool
+	dirty     bool
+	dirtyRect image.Rectangle
 }
 
 func Mod() (map[string]interp.Value, error) {
@@ -41,8 +45,9 @@ func Mod() (map[string]interp.Value, error) {
 		return nil, err
 	}
 	m := &mod{
-		w:     w,
-		color: colors["white"],
+		w:       w,
+		color:   colors["white"],
+		drawing: true,
 	}
 
 	w.SetTitle("Pants")
@@ -60,11 +65,13 @@ func Mod() (map[string]interp.Value, error) {
 	}()
 
 	return map[string]interp.Value{
-		"color": interp.ProcCB(m.Color),
-		"print": interp.ProcCB(m.Print),
-		"pixel": interp.ProcCB(m.Pixel),
-		"line":  interp.ProcCB(m.Line),
-		"clear": interp.ProcCB(m.Clear),
+		"color":   interp.ProcCB(m.Color),
+		"print":   interp.ProcCB(m.Print),
+		"pixel":   interp.ProcCB(m.Pixel),
+		"line":    interp.ProcCB(m.Line),
+		"clear":   interp.ProcCB(m.Clear),
+		"drawon":  interp.ProcCB(m.DrawOn),
+		"drawoff": interp.ProcCB(m.DrawOff),
 	}, nil
 }
 
@@ -101,26 +108,54 @@ func (m *mod) Pixel(args []interp.Value) error {
 			return fmt.Errorf("unexpected value: %#v", arg)
 		}
 	}
-	x, _ := args[0].(interp.ValNumber).Val.Float64()
-	y, _ := args[1].(interp.ValNumber).Val.Float64()
-	if x < 0 {
-		x = 0
+	xf, _ := args[0].(interp.ValNumber).Val.Float64()
+	x := int(xf)
+	if x < 0 || windowWidth <= x {
+		return nil
 	}
-	if x > windowWidth {
-		x = windowWidth - 1
+	yf, _ := args[1].(interp.ValNumber).Val.Float64()
+	y := int(yf)
+	if y < 0 || windowHeight <= y {
+		return nil
 	}
-	if y < 0 {
-		y = 0
-	}
-	if y > windowHeight {
-		y = windowHeight - 1
-	}
-	m.w.Screen().Set(int(x), int(y), m.color)
+	m.w.Screen().Set(x, y, m.color)
 
-	m.w.FlushImage(image.Rectangle{
-		Min: image.Point{int(x), int(y)},
-		Max: image.Point{int(x) + 1, int(y) + 1}})
+	m.update(x, y, x+1, y+1)
 	return nil
+}
+
+func (m *mod) update(x1, y1, x2, y2 int) {
+	if m.drawing {
+		m.w.FlushImage(image.Rectangle{
+			Min: image.Point{x1, y1},
+			Max: image.Point{x2, y2}})
+		return
+	}
+	if !m.dirty {
+		m.dirty = true
+		m.dirtyRect = image.Rectangle{
+			Min: image.Point{x1, y1},
+			Max: image.Point{x2, y2}}
+		return
+	}
+	m.dirtyRect.Min.X = min(m.dirtyRect.Min.X, x1)
+	m.dirtyRect.Min.Y = min(m.dirtyRect.Min.Y, y1)
+	m.dirtyRect.Max.X = max(m.dirtyRect.Max.X, x2)
+	m.dirtyRect.Max.Y = max(m.dirtyRect.Max.Y, y2)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a < b {
+		return b
+	}
+	return a
 }
 
 func (m *mod) Line(args []interp.Value) error {
@@ -173,11 +208,9 @@ func (m *mod) Line(args []interp.Value) error {
 		ymin, ymax = y2, y1
 	}
 
-	m.w.FlushImage(image.Rectangle{
-		Min: image.Point{clamp(x1, 0, windowWidth-1),
-			clamp(ymin, 0, windowHeight-1)},
-		Max: image.Point{clamp(x2, 0, windowWidth-1) + 1,
-			clamp(ymax, 0, windowHeight-1) + 1}})
+	m.update(
+		clamp(x1, 0, windowWidth-1), clamp(ymin, 0, windowHeight-1),
+		clamp(x2, 0, windowWidth-1)+1, clamp(ymax, 0, windowHeight-1)+1)
 	return nil
 }
 
@@ -207,9 +240,7 @@ func (m *mod) Print(args []interp.Value) error {
 			fixed.Int26_6(0 * 64),
 			fixed.Int26_6((m.row + 1) * 13 * 64)},
 	}).DrawString(arg.Val)
-	m.w.FlushImage(image.Rectangle{
-		Min: image.Point{0, 0},
-		Max: image.Point{windowWidth, windowHeight}})
+	m.update(0, 0, windowWidth, windowHeight)
 	m.row += 1
 	return nil
 }
@@ -222,6 +253,29 @@ func (m *mod) Clear(args []interp.Value) error {
 		Min: image.Point{0, 0},
 		Max: image.Point{windowWidth, windowHeight}}
 	m.w.Screen().CopyRGBA(image.NewRGBA(rect), rect)
-	m.w.FlushImage(rect)
+	m.update(0, 0, windowWidth, windowHeight)
+	return nil
+}
+
+func (m *mod) DrawOff(args []interp.Value) error {
+	if len(args) != 0 {
+		return fmt.Errorf("expected no arguments")
+	}
+	m.drawing = false
+	return nil
+}
+
+func (m *mod) DrawOn(args []interp.Value) error {
+	if len(args) != 0 {
+		return fmt.Errorf("expected no arguments")
+	}
+	if m.drawing {
+		return nil
+	}
+	if m.dirty {
+		m.w.FlushImage(m.dirtyRect)
+		m.dirty = false
+	}
+	m.drawing = true
 	return nil
 }

@@ -3,9 +3,14 @@ package main
 import (
 	"flag"
 	"os"
+	"runtime/pprof"
 
 	"github.com/jtolds/pants2/mods/std"
 	"github.com/jtolds/pants2/mods/vis2d"
+)
+
+var (
+	cpuProfile = flag.String("profile", "", "profile output file")
 )
 
 func main() {
@@ -17,6 +22,17 @@ func main() {
 
 func Main() error {
 	flag.Parse()
+
+	if *cpuProfile != "" {
+		f, err := os.Create(*cpuProfile)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
 	a := NewApp()
 	a.DefineModule("std", std.Mod)
 	a.DefineModule("vis2d", vis2d.Mod)
