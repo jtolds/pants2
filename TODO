@@ -1,0 +1,16 @@
+?
+> var x
+> x = (100)*3
+> print x
+300
+> func y(a) { return a }
+> print y(x)
+300
+> print y((100)*3)
+300
+> proc z a { print a }
+> z (100)*3
+Syntax error on file "<stdin>", line 9, character 8: Unexpected token "*".
+
+also, support var x = val syntax
+

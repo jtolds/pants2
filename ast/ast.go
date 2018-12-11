@@ -248,7 +248,7 @@ func (e *ExprString) String() string {
 
 type ExprNumber struct {
 	Token *Token
-	Val   *big.Rat
+	Val   big.Rat
 }
 
 func (e *ExprNumber) String() string {

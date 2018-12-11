@@ -2,7 +2,6 @@ package ast
 
 import (
 	"io"
-	"math/big"
 )
 
 func ParseStatement(tokens *TokenSource) (stmt Stmt, err error) {
@@ -106,12 +105,12 @@ func parseExprOrder1(tokens *TokenSource) (Expr, error) {
 	case "string":
 		return &ExprString{Token: tok, Val: tok.Val}, nil
 	case "number":
-		val := new(big.Rat)
-		_, ok := val.SetString(tok.Val)
+		rv := &ExprNumber{Token: tok}
+		_, ok := rv.Val.SetString(tok.Val)
 		if !ok {
 			panic("failed to parse tokenized number")
 		}
-		return &ExprNumber{Token: tok, Val: val}, nil
+		return rv, nil
 	case "bool":
 		return &ExprBool{Token: tok, Val: tok.Val == "true"}, nil
 	case "(":

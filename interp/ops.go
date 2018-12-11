@@ -12,8 +12,8 @@ func equalityTest(expr ast.Expr, left, right Value) bool {
 		return false
 	}
 	switch left.(type) {
-	case ValNumber:
-		return left.(ValNumber).Val.Cmp(right.(ValNumber).Val) == 0
+	case *ValNumber:
+		return left.(*ValNumber).Val.Cmp(&right.(*ValNumber).Val) == 0
 	case ValString:
 		return left.(ValString).Val == right.(ValString).Val
 	case ValBool:
@@ -23,72 +23,98 @@ func equalityTest(expr ast.Expr, left, right Value) bool {
 	}
 }
 
-type opkey struct{ op, left, right string }
+type typesym int
 
-func typename(val interface{}) string { return fmt.Sprintf("%T", val) }
+var (
+	typesymNum typesym = 0
+	typesymStr typesym = 1
+)
+
+func typename(val Value) typesym {
+	switch val.(type) {
+	case *ValNumber:
+		return typesymNum
+	case ValString:
+		return typesymStr
+	default:
+		panic(fmt.Sprintf("type unimplemented: %#T", val))
+	}
+}
+
+type opkey struct {
+	op          string
+	left, right typesym
+}
+
+var zero big.Rat
 
 var operations = map[opkey]func(t *ast.Token, left, right Value) (
 	Value, error){
-	opkey{"+", typename(ValNumber{}), typename(ValNumber{})}: func(
+	opkey{"+", typename(&ValNumber{}), typename(&ValNumber{})}: func(
 		t *ast.Token, left, right Value) (Value, error) {
-		return ValNumber{
-			Val: new(big.Rat).Add(left.(ValNumber).Val, right.(ValNumber).Val)}, nil
+		var rv ValNumber
+		rv.Val.Add(&left.(*ValNumber).Val, &right.(*ValNumber).Val)
+		return &rv, nil
 	},
-	opkey{"-", typename(ValNumber{}), typename(ValNumber{})}: func(
+	opkey{"-", typename(&ValNumber{}), typename(&ValNumber{})}: func(
 		t *ast.Token, left, right Value) (Value, error) {
-		return ValNumber{
-			Val: new(big.Rat).Sub(left.(ValNumber).Val, right.(ValNumber).Val)}, nil
+		var rv ValNumber
+		rv.Val.Sub(&left.(*ValNumber).Val, &right.(*ValNumber).Val)
+		return &rv, nil
 	},
-	opkey{"*", typename(ValNumber{}), typename(ValNumber{})}: func(
+	opkey{"*", typename(&ValNumber{}), typename(&ValNumber{})}: func(
 		t *ast.Token, left, right Value) (Value, error) {
-		return ValNumber{
-			Val: new(big.Rat).Mul(left.(ValNumber).Val, right.(ValNumber).Val)}, nil
+		var rv ValNumber
+		rv.Val.Mul(&left.(*ValNumber).Val, &right.(*ValNumber).Val)
+		return &rv, nil
 	},
-	opkey{"/", typename(ValNumber{}), typename(ValNumber{})}: func(
+	opkey{"/", typename(&ValNumber{}), typename(&ValNumber{})}: func(
 		t *ast.Token, left, right Value) (Value, error) {
-		if new(big.Rat).Cmp(right.(ValNumber).Val) == 0 {
+		if zero.Cmp(&right.(*ValNumber).Val) == 0 {
 			return nil, NewRuntimeError(t, "Division by zero")
 		}
-		return ValNumber{
-			Val: new(big.Rat).Mul(left.(ValNumber).Val,
-				new(big.Rat).Inv(right.(ValNumber).Val))}, nil
+		var rv ValNumber
+		var im big.Rat
+		im.Inv(&right.(*ValNumber).Val)
+		rv.Val.Mul(&left.(*ValNumber).Val, &im)
+		return &rv, nil
 	},
-	opkey{"%", typename(ValNumber{}), typename(ValNumber{})}: func(
+	opkey{"%", typename(&ValNumber{}), typename(&ValNumber{})}: func(
 		t *ast.Token, left, right Value) (Value, error) {
-		if new(big.Rat).Cmp(right.(ValNumber).Val) == 0 {
+		if zero.Cmp(&right.(*ValNumber).Val) == 0 {
 			return nil, NewRuntimeError(t, "Division by zero")
 		}
-		leftdenom := left.(ValNumber).Val.Denom()
-		rightdenom := right.(ValNumber).Val.Denom()
+		leftdenom := left.(*ValNumber).Val.Denom()
+		rightdenom := right.(*ValNumber).Val.Denom()
 		if !leftdenom.IsInt64() || leftdenom.Int64() != 1 ||
 			!rightdenom.IsInt64() || rightdenom.Int64() != 1 {
 			return nil, NewRuntimeError(t, "Modulo only works on integers")
 		}
-		return ValNumber{
-			Val: new(big.Rat).SetInt(
-				new(big.Int).Mod(
-					left.(ValNumber).Val.Num(),
-					right.(ValNumber).Val.Num()))}, nil
+		var rv ValNumber
+		var im big.Int
+		im.Mod(left.(*ValNumber).Val.Num(), right.(*ValNumber).Val.Num())
+		rv.Val.SetInt(&im)
+		return &rv, nil
 	},
 	opkey{"+", typename(ValString{}), typename(ValString{})}: func(
 		t *ast.Token, left, right Value) (Value, error) {
 		return ValString{Val: left.(ValString).Val + right.(ValString).Val}, nil
 	},
-	opkey{"<", typename(ValNumber{}), typename(ValNumber{})}: func(
+	opkey{"<", typename(&ValNumber{}), typename(&ValNumber{})}: func(
 		t *ast.Token, left, right Value) (Value, error) {
-		return ValBool{Val: left.(ValNumber).Val.Cmp(right.(ValNumber).Val) < 0}, nil
+		return ValBool{Val: left.(*ValNumber).Val.Cmp(&right.(*ValNumber).Val) < 0}, nil
 	},
-	opkey{"<=", typename(ValNumber{}), typename(ValNumber{})}: func(
+	opkey{"<=", typename(&ValNumber{}), typename(&ValNumber{})}: func(
 		t *ast.Token, left, right Value) (Value, error) {
-		return ValBool{Val: left.(ValNumber).Val.Cmp(right.(ValNumber).Val) <= 0}, nil
+		return ValBool{Val: left.(*ValNumber).Val.Cmp(&right.(*ValNumber).Val) <= 0}, nil
 	},
-	opkey{">", typename(ValNumber{}), typename(ValNumber{})}: func(
+	opkey{">", typename(&ValNumber{}), typename(&ValNumber{})}: func(
 		t *ast.Token, left, right Value) (Value, error) {
-		return ValBool{Val: left.(ValNumber).Val.Cmp(right.(ValNumber).Val) > 0}, nil
+		return ValBool{Val: left.(*ValNumber).Val.Cmp(&right.(*ValNumber).Val) > 0}, nil
 	},
-	opkey{">=", typename(ValNumber{}), typename(ValNumber{})}: func(
+	opkey{">=", typename(&ValNumber{}), typename(&ValNumber{})}: func(
 		t *ast.Token, left, right Value) (Value, error) {
-		return ValBool{Val: left.(ValNumber).Val.Cmp(right.(ValNumber).Val) >= 0}, nil
+		return ValBool{Val: left.(*ValNumber).Val.Cmp(&right.(*ValNumber).Val) >= 0}, nil
 	},
 	opkey{"<", typename(ValString{}), typename(ValString{})}: func(
 		t *ast.Token, left, right Value) (Value, error) {

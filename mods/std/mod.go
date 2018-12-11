@@ -17,7 +17,9 @@ func Time(args []interp.Value) (interp.Value, error) {
 	if len(args) != 0 {
 		return nil, fmt.Errorf("unexpected arguments")
 	}
-	return interp.ValNumber{Val: big.NewRat(time.Now().UnixNano(), 1)}, nil
+	var rv interp.ValNumber
+	rv.Val.SetInt64(time.Now().UnixNano())
+	return &rv, nil
 }
 
 func Input(args []interp.Value) (interp.Value, error) {
@@ -75,50 +77,56 @@ func Number(args []interp.Value) (interp.Value, error) {
 	}
 	switch arg := args[0].(type) {
 	case interp.ValString:
-		rv, ok := new(big.Rat).SetString(strings.TrimSpace(arg.Val))
+		var rv interp.ValNumber
+		_, ok := rv.Val.SetString(strings.TrimSpace(arg.Val))
 		if !ok {
 			return nil, fmt.Errorf("could not convert value to number: %#v", arg)
 		}
-		return interp.ValNumber{Val: rv}, nil
-	case interp.ValNumber:
+		return &rv, nil
+	case *interp.ValNumber:
 		return arg, nil
 	default:
 		return nil, fmt.Errorf("could not convert value to number: %#v", arg)
 	}
 }
 
+var one = big.NewInt(1)
+
 func Random(args []interp.Value) (interp.Value, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("expected two arguments")
 	}
-	low, ok := args[0].(interp.ValNumber)
+	low, ok := args[0].(*interp.ValNumber)
 	if !ok {
 		return nil, fmt.Errorf("first argument should be a number")
 	}
-	if big.NewInt(1).Cmp(low.Val.Denom()) != 0 {
+	if one.Cmp(low.Val.Denom()) != 0 {
 		return nil, fmt.Errorf("first argument should be an integer")
 	}
-	high, ok := args[1].(interp.ValNumber)
+	high, ok := args[1].(*interp.ValNumber)
 	if !ok {
 		return nil, fmt.Errorf("second argument should be a number")
 	}
-	if big.NewInt(1).Cmp(high.Val.Denom()) != 0 {
+	if one.Cmp(high.Val.Denom()) != 0 {
 		return nil, fmt.Errorf("second argument should be an integer")
 	}
 	z, err := rand.Int(rand.Reader, new(big.Int).Sub(high.Val.Num(), low.Val.Num()))
 	if err != nil {
 		return nil, err
 	}
-	return interp.ValNumber{
-		Val: new(big.Rat).Add(new(big.Rat).SetInt(z), low.Val)}, nil
+	var rv interp.ValNumber
+	var im big.Rat
+	im.SetInt(z)
+	rv.Val.Add(&im, &low.Val)
+	return &rv, nil
 }
 
 func Mod() (map[string]interp.Value, error) {
 	return map[string]interp.Value{
 		// "print":   interp.ProcCB(Print),
 		// "println": interp.ProcCB(Println),
-		"time": interp.FuncCB(Time),
-		// "input":   interp.FuncCB(Input),
+		"time":   interp.FuncCB(Time),
+		"input":  interp.FuncCB(Input),
 		"number": interp.FuncCB(Number),
 		"random": interp.FuncCB(Random),
 		"call":   interp.ProcCB(func([]interp.Value) error { return nil }),

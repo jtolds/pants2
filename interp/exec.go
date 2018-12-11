@@ -2,14 +2,13 @@ package interp
 
 import (
 	"fmt"
-	"math/big"
 
 	"github.com/jtolds/pants2/ast"
 )
 
-func (s *Scope) RunAll(stmts []ast.Stmt) error {
+func RunAll(s Scope, stmts []ast.Stmt) error {
 	for _, stmt := range stmts {
-		err := s.Run(stmt)
+		err := Run(s, stmt)
 		if err != nil {
 			return err
 		}
@@ -17,33 +16,33 @@ func (s *Scope) RunAll(stmts []ast.Stmt) error {
 	return nil
 }
 
-func (s *Scope) Run(stmt ast.Stmt) error {
+func Run(s Scope, stmt ast.Stmt) error {
 	switch stmt := stmt.(type) {
 	case *ast.StmtVar:
 		for _, v := range stmt.Vars {
-			if d, exists := s.vars[v.Token.Val]; exists {
+			if d := s.Lookup(v.Token.Val); d != nil {
 				return NewRuntimeError(v.Token,
 					"Variable %v already defined on file %#v, line %d",
 					v.Token.Val, d.Def.Filename, d.Def.Lineno)
 			}
 		}
 		for _, v := range stmt.Vars {
-			s.vars[v.Token.Val] = &ValueCell{Def: v.Token.Line}
+			s.Define(v.Token.Val, &ValueCell{Def: v.Token.Line})
 		}
 		return nil
 	case *ast.StmtAssignment:
-		if _, exists := s.vars[stmt.Lhs.Token.Val]; !exists {
+		if d := s.Lookup(stmt.Lhs.Token.Val); d == nil {
 			return NewRuntimeError(stmt.Lhs.Token,
 				"Variable %v not defined", stmt.Lhs.Token.Val)
 		}
-		val, err := s.Eval(stmt.Rhs)
+		val, err := Eval(s, stmt.Rhs)
 		if err != nil {
 			return err
 		}
-		s.vars[stmt.Lhs.Token.Val].Val = val
+		s.Lookup(stmt.Lhs.Token.Val).Val = val
 		return nil
 	case *ast.StmtProcCall:
-		procval, err := s.Eval(stmt.Proc)
+		procval, err := Eval(s, stmt.Proc)
 		if err != nil {
 			return err
 		}
@@ -55,7 +54,7 @@ func (s *Scope) Run(stmt ast.Stmt) error {
 		}
 		args := make([]Value, 0, len(stmt.Args))
 		for _, arg := range stmt.Args {
-			val, err := s.Eval(arg)
+			val, err := Eval(s, arg)
 			if err != nil {
 				return err
 			}
@@ -63,7 +62,7 @@ func (s *Scope) Run(stmt ast.Stmt) error {
 		}
 		return proc.Call(stmt.Token, args)
 	case *ast.StmtIf:
-		test, err := s.Eval(stmt.Test)
+		test, err := Eval(s, stmt.Test)
 		if err != nil {
 			return err
 		}
@@ -74,17 +73,18 @@ func (s *Scope) Run(stmt ast.Stmt) error {
 		}
 		if testbool.Val {
 			if len(stmt.Body) > 0 {
-				return s.Copy().RunAll(stmt.Body)
+				return RunAll(s.Fork(), stmt.Body)
 			}
 		} else {
 			if len(stmt.Else) > 0 {
-				return s.Copy().RunAll(stmt.Else)
+				return RunAll(s.Fork(), stmt.Else)
 			}
 		}
 		return nil
 	case *ast.StmtWhile:
 		for {
-			test, err := s.Eval(stmt.Test)
+			sf := s.Fork()
+			test, err := Eval(sf, stmt.Test)
 			if err != nil {
 				return err
 			}
@@ -96,7 +96,7 @@ func (s *Scope) Run(stmt ast.Stmt) error {
 			if !testbool.Val {
 				return nil
 			}
-			err = s.Copy().RunAll(stmt.Body)
+			err = RunAll(sf, stmt.Body)
 			if err != nil {
 				if IsControlErrorType(err, CtrlBreak) {
 					return nil
@@ -107,87 +107,68 @@ func (s *Scope) Run(stmt ast.Stmt) error {
 			}
 		}
 	case *ast.StmtProcDef:
-		if d, exists := s.vars[stmt.Name.Token.Val]; exists {
+		if d := s.Lookup(stmt.Name.Token.Val); d != nil {
 			return NewRuntimeError(stmt.Name.Token,
 				"Variable %v already defined on file %#v, line %d",
 				stmt.Name.Token.Val, d.Def.Filename, d.Def.Lineno)
 		}
-		s.vars[stmt.Name.Token.Val] = &ValueCell{
-			Def: stmt.Token.Line,
-			Val: &UserProc{
-				def:   stmt.Token,
-				name:  stmt.Name.Token.Val,
-				scope: s,
-				args:  stmt.Args,
-				body:  stmt.Body}}
+		s.Define(stmt.Name.Token.Val, &ValueCell{Def: stmt.Token.Line})
+		// the proc flattens the scope, but the scope it flatten needs the
+		// proc defined so recursion works
+		s.Lookup(stmt.Name.Token.Val).Val = &UserProc{
+			def:   stmt.Token,
+			name:  stmt.Name.Token.Val,
+			scope: s.Flatten(),
+			args:  stmt.Args,
+			body:  stmt.Body}
 		return nil
 	case *ast.StmtUndefine:
 		for _, v := range stmt.Vars {
-			if _, exists := s.vars[v.Token.Val]; !exists {
+			if d := s.Lookup(v.Token.Val); d == nil {
 				return NewRuntimeError(v.Token,
 					"Variable %v already not defined", v.Token.Val)
 			}
 		}
 		for _, v := range stmt.Vars {
-			delete(s.vars, v.Token.Val)
-			for mod := range s.unimports {
-				delete(s.unimports[mod], v.Token.Val)
-			}
+			s.Remove(v.Token.Val)
 		}
 		return nil
 	case *ast.StmtFuncDef:
-		if d, exists := s.vars[stmt.Name.Token.Val]; exists {
+		if d := s.Lookup(stmt.Name.Token.Val); d != nil {
 			return NewRuntimeError(stmt.Name.Token,
 				"Variable %v already defined on file %#v, line %d",
 				stmt.Name.Token.Val, d.Def.Filename, d.Def.Lineno)
 		}
-		s.vars[stmt.Name.Token.Val] = &ValueCell{
-			Def: stmt.Token.Line,
-			Val: &UserFunc{
-				def:   stmt.Token,
-				name:  stmt.Name.Token.Val,
-				scope: s,
-				args:  stmt.Args,
-				body:  stmt.Body}}
+		s.Define(stmt.Name.Token.Val, &ValueCell{Def: stmt.Token.Line})
+		// the func flattens the scope, but the scope it flatten needs the
+		// func defined so recursion works
+		s.Lookup(stmt.Name.Token.Val).Val = &UserFunc{
+			def:   stmt.Token,
+			name:  stmt.Name.Token.Val,
+			scope: s.Flatten(),
+			args:  stmt.Args,
+			body:  stmt.Body}
 		return nil
 	case *ast.StmtControl:
 		return NewControlError(stmt.Token, nil)
 	case *ast.StmtReturn:
-		val, err := s.Eval(stmt.Val)
+		val, err := Eval(s, stmt.Val)
 		if err != nil {
 			return err
 		}
 		return NewControlError(stmt.Token, val)
 	case *ast.StmtExport:
-		if s.exports == nil {
-			return NewRuntimeError(stmt.Token, "Unexpected export")
-		}
-		for _, v := range stmt.Vars {
-			if d, exists := s.exports[v.Token.Val]; exists {
-				return NewRuntimeError(v.Token,
-					"Exported variable \"%s\" already exported on file %#v, line %d",
-					v.Token.Val, d.Def.Filename, d.Def.Lineno)
-			}
-		}
-		for _, v := range stmt.Vars {
-			cell, ok := s.vars[v.Token.Val]
-			if !ok {
-				return NewRuntimeError(v.Token,
-					"Variable %v not defined", v.Token.Val)
-			}
-			s.exports[v.Token.Val] = cell
+		err := s.Export(stmt)
+		if err != nil {
+			return NewRuntimeError(stmt.Token, "%s", err.Error())
 		}
 		return nil
 	case *ast.StmtImport:
-		exports, err := s.importer.Import(stmt.Path.Val)
-		if err != nil {
-			return err
-		}
 		var prefix string
 		if stmt.Prefix != nil {
 			prefix = stmt.Prefix.Token.Val
 		}
-		err = s.Import(stmt.Path.Val, exports, prefix)
+		err := s.Import(stmt.Path.Val, prefix)
 		if err != nil {
 			return NewRuntimeError(stmt.Token, "%s", err.Error())
 		}
@@ -204,28 +185,28 @@ func (s *Scope) Run(stmt ast.Stmt) error {
 	// unreachable
 }
 
-func (s *Scope) Eval(expr ast.Expr) (Value, error) {
+func Eval(s Scope, expr ast.Expr) (Value, error) {
 	switch expr := expr.(type) {
 	case *ast.ExprVar:
 		name := expr.Var.Token.Val
-		if _, defined := s.vars[name]; !defined {
+		rv := s.Lookup(name)
+		if rv == nil {
 			return nil, NewRuntimeError(expr.Token,
 				"Variable %v not defined", name)
 		}
-		rv := s.vars[name].Val
-		if rv == nil {
+		if rv.Val == nil {
 			return nil, NewRuntimeError(expr.Token,
 				"Variable %v defined but not initialized", name)
 		}
-		return rv, nil
+		return rv.Val, nil
 	case *ast.ExprString:
 		return ValString{Val: expr.Val}, nil
 	case *ast.ExprNumber:
-		return ValNumber{Val: expr.Val}, nil
+		return &ValNumber{Val: expr.Val}, nil
 	case *ast.ExprBool:
 		return ValBool{Val: expr.Val}, nil
 	case *ast.ExprNot:
-		test, err := s.Eval(expr.Expr)
+		test, err := Eval(s, expr.Expr)
 		if err != nil {
 			return nil, err
 		}
@@ -236,27 +217,28 @@ func (s *Scope) Eval(expr ast.Expr) (Value, error) {
 		}
 		return ValBool{Val: !testbool.Val}, nil
 	case *ast.ExprNegative:
-		val, err := s.Eval(expr.Expr)
+		val, err := Eval(s, expr.Expr)
 		if err != nil {
 			return nil, err
 		}
 		switch val := val.(type) {
-		case ValNumber:
-			n := new(big.Rat)
-			return ValNumber{Val: n.Neg(val.Val)}, nil
+		case *ValNumber:
+			rv := ValNumber{}
+			rv.Val.Neg(&val.Val)
+			return &rv, nil
 		default:
 			return nil, NewRuntimeError(expr.Token,
 				"negative requires a number, got %#v instead.", val)
 		}
 	case *ast.ExprOp:
 		if expr.Op.Type == "and" || expr.Op.Type == "or" {
-			return s.combineBool(expr)
+			return combineBool(s, expr)
 		}
-		left, err := s.Eval(expr.Left)
+		left, err := Eval(s, expr.Left)
 		if err != nil {
 			return nil, err
 		}
-		right, err := s.Eval(expr.Right)
+		right, err := Eval(s, expr.Right)
 		if err != nil {
 			return nil, err
 		}
@@ -281,7 +263,7 @@ func (s *Scope) Eval(expr ast.Expr) (Value, error) {
 	case *ast.ExprIndex:
 		panic("TODO")
 	case *ast.ExprFuncCall:
-		funcval, err := s.Eval(expr.Func)
+		funcval, err := Eval(s, expr.Func)
 		if err != nil {
 			return nil, err
 		}
@@ -293,7 +275,7 @@ func (s *Scope) Eval(expr ast.Expr) (Value, error) {
 		}
 		args := make([]Value, 0, len(expr.Args))
 		for _, arg := range expr.Args {
-			val, err := s.Eval(arg)
+			val, err := Eval(s, arg)
 			if err != nil {
 				return nil, err
 			}
@@ -306,8 +288,8 @@ func (s *Scope) Eval(expr ast.Expr) (Value, error) {
 	// unreachable
 }
 
-func (s *Scope) combineBool(op *ast.ExprOp) (Value, error) {
-	left, err := s.Eval(op.Left)
+func combineBool(s Scope, op *ast.ExprOp) (Value, error) {
+	left, err := Eval(s, op.Left)
 	if err != nil {
 		return nil, err
 	}
@@ -320,5 +302,5 @@ func (s *Scope) combineBool(op *ast.ExprOp) (Value, error) {
 		(op.Op.Type == "and" && !leftbool.Val) {
 		return leftbool, nil
 	}
-	return s.Eval(op.Right)
+	return Eval(s, op.Right)
 }

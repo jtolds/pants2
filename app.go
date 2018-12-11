@@ -12,7 +12,7 @@ import (
 )
 
 type App struct {
-	defaultScope *interp.Scope
+	defaultScope interp.Scope
 	builtins     map[string]func() (map[string]interp.Value, error)
 	modules      map[string]map[string]*interp.ValueCell
 }
@@ -22,7 +22,7 @@ func NewApp() (a *App) {
 		builtins: map[string]func() (map[string]interp.Value, error){},
 		modules:  map[string]map[string]*interp.ValueCell{},
 	}
-	a.defaultScope = interp.NewScope(interp.ModuleImporterFunc(a.importMod))
+	a.defaultScope = interp.NewFlatScope(interp.ModuleImporterFunc(a.importMod))
 	return a
 }
 
@@ -43,7 +43,7 @@ func (a *App) RunInDefaultScope(command string) error {
 			}
 			return err
 		}
-		err = s.Run(stmt)
+		err = interp.Run(s, stmt)
 		if err != nil {
 			return err
 		}
@@ -56,7 +56,7 @@ func (a *App) Load(name string, input io.Reader) (
 		return nil, fmt.Errorf("%#v already loaded", name)
 	}
 	a.modules[name] = nil
-	s := a.defaultScope.Copy()
+	s := a.defaultScope.Flatten()
 	rv := s.Exports()
 	tokens := ast.NewTokenSource(ast.NewReaderLineSource(name, input, nil))
 	for {
@@ -68,7 +68,7 @@ func (a *App) Load(name string, input io.Reader) (
 			}
 			return nil, err
 		}
-		err = s.Run(stmt)
+		err = interp.Run(s, stmt)
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +77,7 @@ func (a *App) Load(name string, input io.Reader) (
 
 func (a *App) LoadInteractive(input io.Reader, output io.Writer) (
 	map[string]*interp.ValueCell, error) {
-	s := a.defaultScope.Copy()
+	s := a.defaultScope.Flatten()
 	rv := s.Exports()
 	tokens := ast.NewTokenSource(ast.NewReaderLineSource("<stdin>", input,
 		func() error {
@@ -100,7 +100,7 @@ func (a *App) LoadInteractive(input io.Reader, output io.Writer) (
 			tokens.ResetLine()
 			continue
 		}
-		err = s.Run(stmt)
+		err = interp.Run(s, stmt)
 		if err != nil {
 			if !interp.IsHandledError(err) {
 				return nil, err

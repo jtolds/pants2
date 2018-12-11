@@ -30,9 +30,9 @@ var (
 )
 
 type mod struct {
-	w     wde.Window
-	color color.RGBA
-	row   int
+	w        wde.Window
+	color    color.RGBA
+	row, col int
 
 	drawing   bool
 	dirty     bool
@@ -68,10 +68,10 @@ func Mod() (map[string]interp.Value, error) {
 		"color":   interp.ProcCB(m.Color),
 		"print":   interp.ProcCB(m.Print),
 		"pixel":   interp.ProcCB(m.Pixel),
-		"line":    interp.ProcCB(m.Line),
 		"clear":   interp.ProcCB(m.Clear),
 		"drawon":  interp.ProcCB(m.DrawOn),
 		"drawoff": interp.ProcCB(m.DrawOff),
+		"locate":  interp.ProcCB(m.Locate),
 	}, nil
 }
 
@@ -104,16 +104,16 @@ func (m *mod) Pixel(args []interp.Value) error {
 		return fmt.Errorf("expected two arguments")
 	}
 	for _, arg := range args {
-		if _, ok := arg.(interp.ValNumber); !ok {
+		if _, ok := arg.(*interp.ValNumber); !ok {
 			return fmt.Errorf("unexpected value: %#v", arg)
 		}
 	}
-	xf, _ := args[0].(interp.ValNumber).Val.Float64()
+	xf, _ := args[0].(*interp.ValNumber).Val.Float64()
 	x := int(xf)
 	if x < 0 || windowWidth <= x {
 		return nil
 	}
-	yf, _ := args[1].(interp.ValNumber).Val.Float64()
+	yf, _ := args[1].(*interp.ValNumber).Val.Float64()
 	y := int(yf)
 	if y < 0 || windowHeight <= y {
 		return nil
@@ -158,90 +158,56 @@ func max(a, b int) int {
 	return a
 }
 
-func (m *mod) Line(args []interp.Value) error {
-	if len(args) != 4 {
-		return fmt.Errorf("expected four arguments")
-	}
+func tostr(args []interp.Value) (string, error) {
+	vals := make([]string, 0, len(args))
 	for _, arg := range args {
-		if _, ok := arg.(interp.ValNumber); !ok {
-			return fmt.Errorf("unexpected value: %#v", arg)
+		switch arg := arg.(type) {
+		case *interp.ValNumber:
+			vals = append(vals, arg.Val.RatString())
+		case interp.ValString:
+			vals = append(vals, arg.Val)
+		case interp.ValBool:
+			vals = append(vals, fmt.Sprint(arg.Val))
+		default:
+			return "", fmt.Errorf("unexpected value: %#v", arg)
 		}
 	}
-	x1f, _ := args[0].(interp.ValNumber).Val.Float64()
-	y1f, _ := args[1].(interp.ValNumber).Val.Float64()
-	x2f, _ := args[2].(interp.ValNumber).Val.Float64()
-	y2f, _ := args[3].(interp.ValNumber).Val.Float64()
-	x1, x2, y1, y2 := int(x1f), int(x2f), int(y1f), int(y2f)
-	if x2 < x1 {
-		x1, y1, x2, y2 = x2, y2, x1, y1
-	}
-	y := y1
-	ydir := 1
-	if y2 < y1 {
-		ydir = -1
-	}
-	for x := x1; x <= x2; x++ {
-		denom := x2 - x1
-		num := x - x1
-		ynext := y1
-		if num == denom {
-			ynext = y2
-		} else {
-			ynext += (y2 - y1) * num / denom
-		}
-		for ; y != ynext; y += ydir {
-			if 0 <= x && x < windowWidth &&
-				0 <= y && y < windowHeight {
-				m.w.Screen().Set(x, y, m.color)
-			}
-		}
-		if y == ynext {
-			if 0 <= x && x < windowWidth &&
-				0 <= y && y < windowHeight {
-				m.w.Screen().Set(x, y, m.color)
-			}
-		}
-	}
-
-	ymin, ymax := y1, y2
-	if y2 < y1 {
-		ymin, ymax = y2, y1
-	}
-
-	m.update(
-		clamp(x1, 0, windowWidth-1), clamp(ymin, 0, windowHeight-1),
-		clamp(x2, 0, windowWidth-1)+1, clamp(ymax, 0, windowHeight-1)+1)
-	return nil
-}
-
-func clamp(val, min, max int) int {
-	if val < min {
-		val = min
-	}
-	if val > max {
-		val = max
-	}
-	return val
+	return strings.Join(vals, " "), nil
 }
 
 func (m *mod) Print(args []interp.Value) error {
-	if len(args) != 1 {
-		return fmt.Errorf("expected only one argument")
-	}
-	arg, ok := args[0].(interp.ValString)
-	if !ok {
-		return fmt.Errorf("unexpected value: %#v", args[0])
+	str, err := tostr(args)
+	if err != nil {
+		return err
 	}
 	(&font.Drawer{
 		Dst:  m.w.Screen(),
 		Src:  image.NewUniform(m.color),
 		Face: basicfont.Face7x13,
 		Dot: fixed.Point26_6{
-			fixed.Int26_6(0 * 64),
-			fixed.Int26_6((m.row + 1) * 13 * 64)},
-	}).DrawString(arg.Val)
+			fixed.Int26_6(m.col * 64),
+			fixed.Int26_6((m.row + 13) * 64)},
+	}).DrawString(str)
 	m.update(0, 0, windowWidth, windowHeight)
-	m.row += 1
+	m.row += 13
+	return nil
+}
+
+func (m *mod) Locate(args []interp.Value) error {
+	if len(args) != 2 {
+		return fmt.Errorf("expected two arguments")
+	}
+	for _, arg := range args {
+		if _, ok := arg.(*interp.ValNumber); !ok {
+			return fmt.Errorf("unexpected value: %#v", arg)
+		}
+	}
+	xf, _ := args[0].(*interp.ValNumber).Val.Float64()
+	x := int(xf)
+	yf, _ := args[1].(*interp.ValNumber).Val.Float64()
+	y := int(yf)
+	m.row = y
+	m.col = x
 	return nil
 }
 

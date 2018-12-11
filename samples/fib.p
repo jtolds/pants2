@@ -7,8 +7,10 @@ func fib(x) {
   return fib(x-1) + fib(x-2)
 }
 
-println "what fibonacci number do you want?"
+print "what fibonacci number do you want?"
 print "> "
 var num
 num = number(input())
-println fib(num)
+print fib(num)
+
+loop {}

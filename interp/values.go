@@ -13,9 +13,9 @@ type Value interface {
 	value()
 }
 
-type ValNumber struct{ Val *big.Rat }
+type ValNumber struct{ Val big.Rat }
 
-func (v ValNumber) String() string {
+func (v *ValNumber) String() string {
 	return strings.TrimRight(strings.TrimRight(v.Val.FloatString(10), "0"), ".")
 }
 
@@ -35,7 +35,7 @@ type ValProc interface {
 type UserProc struct {
 	def   *ast.Token
 	name  string
-	scope *Scope
+	scope Scope
 	args  []*ast.Var
 	body  []ast.Stmt
 }
@@ -48,20 +48,20 @@ func (p *UserProc) Call(t *ast.Token, args []Value) error {
 			"Expected %d arguments but got %d", len(p.args), len(args))
 	}
 	for _, arg := range p.args {
-		if d, exists := p.scope.vars[arg.Token.Val]; exists {
+		if d := p.scope.Lookup(arg.Token.Val); d != nil {
 			return NewRuntimeError(arg.Token,
 				"Variable %v already defined on file %#v, line %d",
 				arg.Token.Val, d.Def.Filename, d.Def.Lineno)
 		}
 	}
-	s := p.scope.Copy()
+	s := p.scope.Fork()
 	for i := range args {
-		s.vars[p.args[i].Token.Val] = &ValueCell{
+		s.Define(p.args[i].Token.Val, &ValueCell{
 			Def: p.args[i].Token.Line,
 			Val: args[i],
-		}
+		})
 	}
-	err := s.RunAll(p.body)
+	err := RunAll(s, p.body)
 	if ce, ok := err.(*ControlError); ok {
 		switch ce.typ {
 		case CtrlBreak, CtrlNext, CtrlReturn:
@@ -89,7 +89,7 @@ type ValFunc interface {
 type UserFunc struct {
 	def   *ast.Token
 	name  string
-	scope *Scope
+	scope Scope
 	args  []*ast.Var
 	body  []ast.Stmt
 }
@@ -102,20 +102,20 @@ func (f *UserFunc) Call(t *ast.Token, args []Value) (Value, error) {
 			"Expected %d arguments but got %d", len(f.args), len(args))
 	}
 	for _, arg := range f.args {
-		if d, exists := f.scope.vars[arg.Token.Val]; exists {
+		if d := f.scope.Lookup(arg.Token.Val); d != nil {
 			return nil, NewRuntimeError(arg.Token,
 				"Variable %v already defined on file %#v, line %d",
 				arg.Token.Val, d.Def.Filename, d.Def.Lineno)
 		}
 	}
-	s := f.scope.Copy()
+	s := f.scope.Fork()
 	for i := range args {
-		s.vars[f.args[i].Token.Val] = &ValueCell{
+		s.Define(f.args[i].Token.Val, &ValueCell{
 			Def: f.args[i].Token.Line,
 			Val: args[i],
-		}
+		})
 	}
-	err := s.RunAll(f.body)
+	err := RunAll(s, f.body)
 	if err == nil {
 		return nil, NewRuntimeError(f.def,
 			"Function exited with no return statement")
@@ -139,9 +139,9 @@ func (f FuncCB) value()                                         {}
 func (f FuncCB) String() string                                 { return "<builtin>" }
 func (f FuncCB) Call(t *ast.Token, args []Value) (Value, error) { return f(args) }
 
-func (v ValNumber) value() {}
-func (v ValString) value() {}
-func (v ValBool) value()   {}
+func (v *ValNumber) value() {}
+func (v ValString) value()  {}
+func (v ValBool) value()    {}
 
 type ValueCell struct {
 	Def *ast.Line
