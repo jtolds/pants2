@@ -8,7 +8,6 @@ import (
 
 	"github.com/jtolds/pants2/interp"
 	wde "github.com/skelterjohn/go.wde"
-	_ "github.com/skelterjohn/go.wde/xgb"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
