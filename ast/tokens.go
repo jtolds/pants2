@@ -28,13 +28,24 @@ func NewTokenizer(line *Line) *Tokenizer {
 }
 
 func (t *Tokenizer) Next() (*Token, error) {
-	t.skipWhitespace()
+	wsSkipped := t.skipWhitespace()
 	if t.charpos >= len(t.chars) || t.chars[t.charpos] == '#' {
 		return nil, io.EOF
 	}
 
 	switch t.chars[t.charpos] {
-	case ',', '{', '}', '[', ']', '(', ')', ';', '+', '-', '*', '/', '%':
+	case '(':
+		t.charpos += 1
+		typ := string(t.chars[t.charpos-1])
+		if !wsSkipped {
+			typ = "f" + typ
+		}
+		return &Token{
+			Line:   t.line,
+			Start:  t.charpos - 1,
+			Length: 1,
+			Type:   typ}, nil
+	case ',', '{', '}', '[', ']', ')', ';', '+', '-', '*', '/', '%':
 		t.charpos += 1
 		return &Token{
 			Line:   t.line,
@@ -200,10 +211,12 @@ func (t *Tokenizer) parseString() (*Token, error) {
 		"String started but not ended.")
 }
 
-func (t *Tokenizer) skipWhitespace() {
+func (t *Tokenizer) skipWhitespace() (skipped bool) {
 	for t.charpos < len(t.chars) && unicode.IsSpace(t.chars[t.charpos]) {
 		t.charpos += 1
+		skipped = true
 	}
+	return skipped
 }
 
 func Tokenize(line *Line) (rv []*Token, err error) {

@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"runtime/pprof"
 
+	"github.com/jtolds/pants2/app"
 	"github.com/jtolds/pants2/mods/std"
 	"github.com/jtolds/pants2/mods/vis2d"
 )
@@ -35,7 +36,7 @@ func Main() error {
 		defer pprof.StopCPUProfile()
 	}
 
-	a := NewApp()
+	a := app.NewApp()
 	a.DefineModule("std", std.Mod)
 	a.DefineModule("vis2d", vis2d.Mod)
 	err := a.RunInDefaultScope(`import "vis2d"; import "std";`)

@@ -252,7 +252,7 @@ type ExprNumber struct {
 }
 
 func (e *ExprNumber) String() string {
-	return fmt.Sprintf("%s", e.Val)
+	return fmt.Sprintf("%s", e.Val.String())
 }
 
 type ExprBool struct {

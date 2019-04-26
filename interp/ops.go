@@ -30,6 +30,17 @@ var (
 	typesymStr typesym = 1
 )
 
+func (t typesym) String() string {
+	switch t {
+	case typesymNum:
+		return "number"
+	case typesymStr:
+		return "string"
+	default:
+		return "unknown"
+	}
+}
+
 func typename(val Value) typesym {
 	switch val.(type) {
 	case *ValNumber:
@@ -37,7 +48,7 @@ func typename(val Value) typesym {
 	case ValString:
 		return typesymStr
 	default:
-		panic(fmt.Sprintf("type unimplemented: %#T", val))
+		panic(fmt.Sprintf("type unimplemented: %#v", val))
 	}
 }
 

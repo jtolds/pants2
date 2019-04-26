@@ -180,7 +180,7 @@ func Run(s Scope, stmt ast.Stmt) error {
 		}
 		return nil
 	default:
-		panic(fmt.Sprintf("unsupported statement: %#T", stmt))
+		panic(fmt.Sprintf("unsupported statement: %#v", stmt))
 	}
 	// unreachable
 }
@@ -283,7 +283,7 @@ func Eval(s Scope, expr ast.Expr) (Value, error) {
 		}
 		return fn.Call(expr.Token, args)
 	default:
-		panic(fmt.Sprintf("unsupported expression: %#T", expr))
+		panic(fmt.Sprintf("unsupported expression: %#v", expr))
 	}
 	// unreachable
 }

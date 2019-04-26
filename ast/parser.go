@@ -68,7 +68,7 @@ loop:
 			return parseProcCall(tokens)
 		}
 
-		if token.Type == "(" {
+		if token.Type == "(" || token.Type == "f(" {
 			tokens.Push(token)
 			return parseProcCall(tokens)
 		}
@@ -113,7 +113,7 @@ func parseExprOrder1(tokens *TokenSource) (Expr, error) {
 		return rv, nil
 	case "bool":
 		return &ExprBool{Token: tok, Val: tok.Val == "true"}, nil
-	case "(":
+	case "(", "f(":
 		expr, err := parseExpression(tokens, true)
 		if err != nil {
 			return nil, err
@@ -161,7 +161,7 @@ func parseExprOrder2(tokens *TokenSource) (Expr, error) {
 			Object: val,
 			Index:  idx,
 		}, nil
-	case "(": // function call
+	case "f(": // function call
 		var args []Expr
 		for {
 			end, err := tokens.NextToken()
@@ -511,7 +511,7 @@ func parseFunc(start *Token, tokens *TokenSource) (Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	if leftparen.Type != "(" {
+	if leftparen.Type != "f(" {
 		return nil, NewSyntaxErrorFromToken(leftparen,
 			"Unexpected token %#v. Expecting left parenthesis.", leftparen.Type)
 	}
