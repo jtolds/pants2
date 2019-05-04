@@ -35,7 +35,18 @@ type ForkScope struct {
 }
 
 func NewForkScope(parent Scope) *ForkScope {
-	return &ForkScope{parent: parent}
+	var sf ForkScope
+	sf.Init(parent)
+	return &sf
+}
+
+func (f *ForkScope) Init(parent Scope) {
+	f.parent = parent
+	if f.vars != nil {
+		for k := range f.vars {
+			delete(f.vars, k)
+		}
+	}
 }
 
 func (f *ForkScope) Lookup(name string) *ValueCell {

@@ -90,9 +90,10 @@ func Run(s Scope, stmt ast.Stmt) error {
 		}
 		return nil
 	case *ast.StmtWhile:
+		var sf ForkScope
 		for {
-			sf := s.Fork()
-			test, err := Eval(sf, stmt.Test)
+			sf.Init(s)
+			test, err := Eval(&sf, stmt.Test)
 			if err != nil {
 				return err
 			}
@@ -104,7 +105,7 @@ func Run(s Scope, stmt ast.Stmt) error {
 			if !testbool.Val {
 				return nil
 			}
-			err = RunAll(sf, stmt.Body)
+			err = RunAll(&sf, stmt.Body)
 			if err != nil {
 				if IsControlErrorType(err, CtrlBreak) {
 					return nil
