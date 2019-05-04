@@ -18,6 +18,7 @@ type Expr interface {
 
 type Var struct {
 	Token *Token
+	Expr  Expr
 }
 
 func (v *Var) String() string { return v.Token.Val }

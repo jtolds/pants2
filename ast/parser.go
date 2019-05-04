@@ -348,7 +348,7 @@ func parseIf(start *Token, tokens *TokenSource) (Stmt, error) {
 	}, nil
 }
 
-func parseVarList(tokens *TokenSource, ignoreNewlines bool) ([]*Var, error) {
+func parseVarDef(tokens *TokenSource, ignoreNewlines bool) (*Var, error) {
 	v, err := nextToken(tokens, ignoreNewlines)
 	if err != nil {
 		return nil, err
@@ -357,7 +357,27 @@ func parseVarList(tokens *TokenSource, ignoreNewlines bool) ([]*Var, error) {
 		return nil, NewSyntaxErrorFromToken(
 			v, "Unexpected token %#v. Expecting variable", v.Type)
 	}
-	vars := []*Var{&Var{Token: v}}
+	equals, err := nextToken(tokens, ignoreNewlines)
+	if err != nil {
+		return nil, err
+	}
+	if equals.Type != "=" {
+		tokens.Push(equals)
+		return &Var{Token: v}, nil
+	}
+	expr, err := parseExpression(tokens, ignoreNewlines)
+	if err != nil {
+		return nil, err
+	}
+	return &Var{Token: v, Expr: expr}, nil
+}
+
+func parseVarList(tokens *TokenSource, ignoreNewlines bool) ([]*Var, error) {
+	v, err := parseVarDef(tokens, ignoreNewlines)
+	if err != nil {
+		return nil, err
+	}
+	vars := []*Var{v}
 	for {
 		comma, err := nextToken(tokens, ignoreNewlines)
 		if err != nil {
@@ -367,15 +387,11 @@ func parseVarList(tokens *TokenSource, ignoreNewlines bool) ([]*Var, error) {
 			tokens.Push(comma)
 			break
 		}
-		v, err := nextToken(tokens, ignoreNewlines)
+		v, err := parseVarDef(tokens, ignoreNewlines)
 		if err != nil {
 			return nil, err
 		}
-		if v.Type != "variable" {
-			return nil, NewSyntaxErrorFromToken(
-				v, "Unexpected token %#v. Expecting variable", v.Type)
-		}
-		vars = append(vars, &Var{Token: v})
+		vars = append(vars, v)
 	}
 	return vars, nil
 }

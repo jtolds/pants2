@@ -49,6 +49,16 @@ func TestAdd(t *testing.T) {
 	assertTrue(t, vals["x"].Val.(*interp.ValNumber).Val.Cmp(big.NewRat(4, 1)) == 0)
 }
 
+func TestAdd2(t *testing.T) {
+	vals := run(t, `
+		var x = 3;
+		x = x + 1;
+		export x;`, nil)
+
+	assertTrue(t, len(vals) == 1)
+	assertTrue(t, vals["x"].Val.(*interp.ValNumber).Val.Cmp(big.NewRat(4, 1)) == 0)
+}
+
 func TestSubproc(t *testing.T) {
 	var testcalls []interp.Value
 	testcall := func(args []interp.Value) error {

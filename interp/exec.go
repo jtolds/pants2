@@ -27,7 +27,15 @@ func Run(s Scope, stmt ast.Stmt) error {
 			}
 		}
 		for _, v := range stmt.Vars {
-			s.Define(v.Token.Val, &ValueCell{Def: v.Token.Line})
+			var val Value
+			if v.Expr != nil {
+				var err error
+				val, err = Eval(s, v.Expr)
+				if err != nil {
+					return err
+				}
+			}
+			s.Define(v.Token.Val, &ValueCell{Def: v.Token.Line, Val: val})
 		}
 		return nil
 	case *ast.StmtAssignment:
