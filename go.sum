@@ -16,6 +16,8 @@ github.com/skelterjohn/go.wde v0.0.0-20180104102407-a0324cbf3ffe h1:wtCP4OuChb1x
 github.com/skelterjohn/go.wde v0.0.0-20180104102407-a0324cbf3ffe/go.mod h1:zXxNsJHeUYIqpg890APBNEn9GoCbA4Cdnvuv3mx4fBk=
 golang.org/x/image v0.0.0-20181107040041-fe2fa19765cb h1:bgVKvF9JMEKw/zhQupMlJd2M8D2v80fqKZDZbtkUCpI=
 golang.org/x/image v0.0.0-20181107040041-fe2fa19765cb/go.mod h1:ux5Hcp/YLpHSI86hEcLt0YII63i6oz57MZXIpbrjZUs=
+golang.org/x/sys v0.0.0-20190502175342-a43fa875dd82 h1:vsphBvatvfbhlb4PO1BYSr9dzugGxJ/SQHoNufZJq1w=
+golang.org/x/sys v0.0.0-20190502175342-a43fa875dd82/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/yaml.v2 v2.2.1 h1:mUhvW9EsL+naU5Q3cakzfE91YhliOondGd6ZrsDBHQE=
 gopkg.in/yaml.v2 v2.2.1/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=

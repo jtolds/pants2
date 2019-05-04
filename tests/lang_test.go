@@ -3,11 +3,11 @@ package tests
 import (
 	"bytes"
 	"fmt"
-	"math/big"
 	"testing"
 
 	"github.com/jtolds/pants2/app"
 	"github.com/jtolds/pants2/interp"
+	"github.com/jtolds/pants2/lib/big"
 	"github.com/jtolds/pants2/mods/std"
 )
 

@@ -2,8 +2,9 @@ package ast
 
 import (
 	"fmt"
-	"math/big"
 	"strings"
+
+	"github.com/jtolds/pants2/lib/big"
 )
 
 type Stmt interface {

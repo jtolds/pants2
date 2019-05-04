@@ -6,6 +6,15 @@
 
 package big
 
-import "internal/cpu"
+import (
+	"golang.org/x/sys/cpu"
+)
 
-var support_adx = cpu.X86.HasADX && cpu.X86.HasBMI2
+func init() {
+	if !cpu.Initialized {
+		panic("expected cpu feature detection")
+	}
+	support_adx = cpu.X86.HasADX && cpu.X86.HasBMI2
+}
+
+var support_adx bool

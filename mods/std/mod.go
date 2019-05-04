@@ -5,12 +5,13 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
-	"math/big"
+	stdbig "math/big"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/jtolds/pants2/interp"
+	"github.com/jtolds/pants2/lib/big"
 )
 
 func Time(args []interp.Value) (interp.Value, error) {
@@ -110,13 +111,20 @@ func Random(args []interp.Value) (interp.Value, error) {
 	if one.Cmp(high.Val.Denom()) != 0 {
 		return nil, fmt.Errorf("second argument should be an integer")
 	}
-	z, err := rand.Int(rand.Reader, new(big.Int).Sub(high.Val.Num(), low.Val.Num()))
+
+	var r, s stdbig.Int
+	r.SetBytes(high.Val.Num().Bytes())
+	s.SetBytes(low.Val.Num().Bytes())
+	// TODO: make sure r.Sub(&r, &s) is not greater than what fits in int64
+	z, err := rand.Int(rand.Reader, r.Sub(&r, &s))
 	if err != nil {
 		return nil, err
 	}
 	var rv interp.ValNumber
 	var im big.Rat
-	im.SetInt(z)
+	var num big.Int
+	num.SetBytes(z.Bytes())
+	im.SetInt(&num)
 	rv.Val.Add(&im, &low.Val)
 	return &rv, nil
 }

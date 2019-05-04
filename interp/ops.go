@@ -2,9 +2,9 @@ package interp
 
 import (
 	"fmt"
-	"math/big"
 
 	"github.com/jtolds/pants2/ast"
+	"github.com/jtolds/pants2/lib/big"
 )
 
 func equalityTest(expr ast.Expr, left, right Value) bool {

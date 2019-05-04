@@ -457,14 +457,13 @@ func mulDenom(z, x, y nat) nat {
 
 // scaleDenom computes x*f.
 // If f == 0 (zero value of denominator), the result is (a copy of) x.
-func scaleDenom(x *Int, f nat) *Int {
-	var z Int
+func (z *Int) scaleDenom(x *Int, f nat) *Int {
 	if len(f) == 0 {
 		return z.Set(x)
 	}
 	z.abs = z.abs.mul(x.abs, f)
 	z.neg = x.neg
-	return &z
+	return z
 }
 
 // Cmp compares x and y and returns:
@@ -474,13 +473,15 @@ func scaleDenom(x *Int, f nat) *Int {
 //   +1 if x >  y
 //
 func (x *Rat) Cmp(y *Rat) int {
-	return scaleDenom(&x.a, y.b.abs).Cmp(scaleDenom(&y.a, x.b.abs))
+	var xs, ys Int
+	return xs.scaleDenom(&x.a, y.b.abs).Cmp(ys.scaleDenom(&y.a, x.b.abs))
 }
 
 // Add sets z to the sum x+y and returns z.
 func (z *Rat) Add(x, y *Rat) *Rat {
-	a1 := scaleDenom(&x.a, y.b.abs)
-	a2 := scaleDenom(&y.a, x.b.abs)
+	var xs, ys Int
+	a1 := xs.scaleDenom(&x.a, y.b.abs)
+	a2 := ys.scaleDenom(&y.a, x.b.abs)
 	z.a.Add(a1, a2)
 	z.b.abs = mulDenom(z.b.abs, x.b.abs, y.b.abs)
 	return z.norm()
@@ -488,8 +489,9 @@ func (z *Rat) Add(x, y *Rat) *Rat {
 
 // Sub sets z to the difference x-y and returns z.
 func (z *Rat) Sub(x, y *Rat) *Rat {
-	a1 := scaleDenom(&x.a, y.b.abs)
-	a2 := scaleDenom(&y.a, x.b.abs)
+	var xs, ys Int
+	a1 := xs.scaleDenom(&x.a, y.b.abs)
+	a2 := ys.scaleDenom(&y.a, x.b.abs)
 	z.a.Sub(a1, a2)
 	z.b.abs = mulDenom(z.b.abs, x.b.abs, y.b.abs)
 	return z.norm()
@@ -515,8 +517,9 @@ func (z *Rat) Quo(x, y *Rat) *Rat {
 	if len(y.a.abs) == 0 {
 		panic("division by zero")
 	}
-	a := scaleDenom(&x.a, y.b.abs)
-	b := scaleDenom(&y.a, x.b.abs)
+	var xs, ys Int
+	a := xs.scaleDenom(&x.a, y.b.abs)
+	b := ys.scaleDenom(&y.a, x.b.abs)
 	z.a.abs = a.abs
 	z.b.abs = b.abs
 	z.a.neg = a.neg != b.neg

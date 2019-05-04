@@ -10,5 +10,6 @@ require (
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0 // indirect
 	github.com/skelterjohn/go.wde v0.0.0-20180104102407-a0324cbf3ffe
 	golang.org/x/image v0.0.0-20181107040041-fe2fa19765cb
+	golang.org/x/sys v0.0.0-20190502175342-a43fa875dd82
 	gopkg.in/yaml.v2 v2.2.1 // indirect
 )

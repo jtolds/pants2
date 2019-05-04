@@ -2,10 +2,10 @@ package interp
 
 import (
 	"fmt"
-	"math/big"
 	"strings"
 
 	"github.com/jtolds/pants2/ast"
+	"github.com/jtolds/pants2/lib/big"
 )
 
 type Value interface {
