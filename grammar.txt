@@ -4,7 +4,7 @@ program := <statement>*
 
 statement := IF <expression> <statementblock>
            | ELSE <statementblock>
-           | VAR <variable> (, <variable>)*
+           | VAR <variable> [ = <expression> ] (, <variable> [ = <expression> ])*
            | <variable> = <expression>
            | LOOP <statementblock>
            | WHILE <expression> <statementblock>

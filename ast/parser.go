@@ -396,7 +396,7 @@ func parseVarList(tokens *TokenSource, ignoreNewlines bool) ([]*Var, error) {
 	return vars, nil
 }
 
-// VAR <variable> (, <variable>)*
+// VAR <variable> [= <expr>] (, <variable> [= <expr>])*
 func parseVar(start *Token, tokens *TokenSource) (Stmt, error) {
 	vars, err := parseVarList(tokens, false)
 	if err != nil {

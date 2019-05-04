@@ -14,14 +14,14 @@ proc box x, y {
   color "green"
   line x*100, (y+1)*100, (x+1)*100, (y+1)*100
   color "red"
-  line 100*(x+1), y*100, (x+1)*100, (y+1)*100
+  line (x+1)*100, y*100, (x+1)*100, (y+1)*100
 }
 
 proc boxes {
   drawoff
-  var i; i = 0
+  var i = 0
   while i < 7 {
-    var j; j = 0
+    var j = 0
     while j < 10 {
       box j, i
       color "white"
@@ -36,8 +36,7 @@ proc boxes {
 
 proc linedesign {
   drawoff
-  var i
-  i = 0
+  var i = 0
   while i < 1000 {
     color "green"
     line 0, 0, i, 700
@@ -51,8 +50,7 @@ proc linedesign {
     if i % 33 == 0 { drawon; drawoff }
   }
   drawon; drawoff
-  var j
-  j = 699
+  var j = 699
   while j >= 0 {
     color "green"
     line 0, 0, i, j

@@ -9,8 +9,7 @@ func fib(x) {
 
 print "what fibonacci number do you want?"
 print "> "
-var num
-num = number(input())
+var num = number(input())
 print fib(num)
 
 loop {}

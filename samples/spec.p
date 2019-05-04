@@ -1,8 +1,6 @@
 # example
 
-VAR msg
-
-msg = "hello world"
+VAR msg = "hello world"
 
 CLEAR
 LOCATE 15, 30

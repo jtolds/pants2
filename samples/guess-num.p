@@ -1,12 +1,10 @@
 #!/usr/bin/env pants2
 
-var ans
-ans = random(1, 101)
+var ans = random(1, 101)
 print "I'm thinking of a number between 1 and 100. What is it?"
 loop {
   print "> "
-  var guess
-  guess = input()
+  var guess = input()
   if guess == "" { break }
   guess = number(guess)
   if guess < ans {

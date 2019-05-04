@@ -125,6 +125,7 @@ func Mod() (map[string]interp.Value, error) {
 	return map[string]interp.Value{
 		// "print":   interp.ProcCB(Print),
 		// "println": interp.ProcCB(Println),
+		"log":    interp.ProcCB(Println),
 		"time":   interp.FuncCB(Time),
 		"input":  interp.FuncCB(Input),
 		"number": interp.FuncCB(Number),
