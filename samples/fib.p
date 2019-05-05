@@ -12,4 +12,6 @@ print "> "
 var num = number(input())
 print fib(num)
 
-loop {}
+loop {
+  sleep 10
+}

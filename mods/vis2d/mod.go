@@ -98,22 +98,27 @@ func (m *mod) Color(args []interp.Value) error {
 	return nil
 }
 
+func toInt(arg interp.Value) int {
+	// TODO: handle overflow
+	xv := arg.(interp.ValNumber).Val
+	xf, _ := xv.Float64()
+	return int(xf)
+}
+
 func (m *mod) Pixel(args []interp.Value) error {
 	if len(args) != 2 {
 		return fmt.Errorf("expected two arguments")
 	}
 	for _, arg := range args {
-		if _, ok := arg.(*interp.ValNumber); !ok {
+		if _, ok := arg.(interp.ValNumber); !ok {
 			return fmt.Errorf("unexpected value: %#v", arg)
 		}
 	}
-	xf, _ := args[0].(*interp.ValNumber).Val.Float64()
-	x := int(xf)
+	x := toInt(args[0])
 	if x < 0 || windowWidth <= x {
 		return nil
 	}
-	yf, _ := args[1].(*interp.ValNumber).Val.Float64()
-	y := int(yf)
+	y := toInt(args[1])
 	if y < 0 || windowHeight <= y {
 		return nil
 	}
@@ -161,7 +166,7 @@ func tostr(args []interp.Value) (string, error) {
 	vals := make([]string, 0, len(args))
 	for _, arg := range args {
 		switch arg := arg.(type) {
-		case *interp.ValNumber:
+		case interp.ValNumber:
 			vals = append(vals, arg.Val.RatString())
 		case interp.ValString:
 			vals = append(vals, arg.Val)
@@ -197,16 +202,11 @@ func (m *mod) Locate(args []interp.Value) error {
 		return fmt.Errorf("expected two arguments")
 	}
 	for _, arg := range args {
-		if _, ok := arg.(*interp.ValNumber); !ok {
+		if _, ok := arg.(interp.ValNumber); !ok {
 			return fmt.Errorf("unexpected value: %#v", arg)
 		}
 	}
-	xf, _ := args[0].(*interp.ValNumber).Val.Float64()
-	x := int(xf)
-	yf, _ := args[1].(*interp.ValNumber).Val.Float64()
-	y := int(yf)
-	m.row = y
-	m.col = x
+	m.col, m.row = toInt(args[0]), toInt(args[1])
 	return nil
 }
 

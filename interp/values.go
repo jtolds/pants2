@@ -15,7 +15,7 @@ type Value interface {
 
 type ValNumber struct{ Val big.Rat }
 
-func (v *ValNumber) String() string {
+func (v ValNumber) String() string {
 	return strings.TrimRight(strings.TrimRight(v.Val.FloatString(10), "0"), ".")
 }
 
@@ -139,9 +139,9 @@ func (f FuncCB) value()                                         {}
 func (f FuncCB) String() string                                 { return "<builtin>" }
 func (f FuncCB) Call(t *ast.Token, args []Value) (Value, error) { return f(args) }
 
-func (v *ValNumber) value() {}
-func (v ValString) value()  {}
-func (v ValBool) value()    {}
+func (v ValNumber) value() {}
+func (v ValString) value() {}
+func (v ValBool) value()   {}
 
 type ValueCell struct {
 	Def *ast.Line

@@ -84,7 +84,7 @@ func Number(args []interp.Value) (interp.Value, error) {
 			return nil, fmt.Errorf("could not convert value to number: %#v", arg)
 		}
 		return &rv, nil
-	case *interp.ValNumber:
+	case interp.ValNumber:
 		return arg, nil
 	default:
 		return nil, fmt.Errorf("could not convert value to number: %#v", arg)
@@ -97,14 +97,14 @@ func Random(args []interp.Value) (interp.Value, error) {
 	if len(args) != 2 {
 		return nil, fmt.Errorf("expected two arguments")
 	}
-	low, ok := args[0].(*interp.ValNumber)
+	low, ok := args[0].(interp.ValNumber)
 	if !ok {
 		return nil, fmt.Errorf("first argument should be a number")
 	}
 	if one.Cmp(low.Val.Denom()) != 0 {
 		return nil, fmt.Errorf("first argument should be an integer")
 	}
-	high, ok := args[1].(*interp.ValNumber)
+	high, ok := args[1].(interp.ValNumber)
 	if !ok {
 		return nil, fmt.Errorf("second argument should be a number")
 	}
@@ -129,11 +129,30 @@ func Random(args []interp.Value) (interp.Value, error) {
 	return &rv, nil
 }
 
+func Sleep(args []interp.Value) error {
+	if len(args) != 1 {
+		return fmt.Errorf("expected one argument")
+	}
+	seconds, ok := args[0].(interp.ValNumber)
+	if !ok {
+		return fmt.Errorf("argument should be a number")
+	}
+
+	var mul big.Rat
+	mul.SetInt64(int64(time.Second))
+	var z big.Rat
+	z.Mul(&seconds.Val, &mul)
+	ns, _ := z.Float64()
+	time.Sleep(time.Duration(int64(ns)))
+	return nil
+}
+
 func Mod() (map[string]interp.Value, error) {
 	return map[string]interp.Value{
 		// "print":   interp.ProcCB(Print),
 		// "println": interp.ProcCB(Println),
 		"log":    interp.ProcCB(Println),
+		"sleep":  interp.ProcCB(Sleep),
 		"time":   interp.FuncCB(Time),
 		"input":  interp.FuncCB(Input),
 		"number": interp.FuncCB(Number),

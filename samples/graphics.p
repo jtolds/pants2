@@ -69,4 +69,6 @@ boxes
 linedesign
 boxes
 
-loop {}
+loop {
+  sleep 10
+}

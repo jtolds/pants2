@@ -1,42 +1,12 @@
 package tests
 
 import (
-	"bytes"
 	"fmt"
 	"testing"
 
-	"github.com/jtolds/pants2/app"
 	"github.com/jtolds/pants2/interp"
 	"github.com/jtolds/pants2/lib/big"
-	"github.com/jtolds/pants2/mods/std"
 )
-
-func assertNoErr(t *testing.T, err error) {
-	t.Helper()
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func assertTrue(t *testing.T, val bool) {
-	t.Helper()
-	if !val {
-		t.Fatal("expectation mismatch")
-	}
-}
-
-func run(t *testing.T, code string, invals map[string]interp.Value) map[string]*interp.ValueCell {
-	a := app.NewApp()
-	a.DefineModule("std", std.Mod)
-	a.RunInDefaultScope(`import "std";`)
-	if invals != nil {
-		a.DefineModule("_test", func() (map[string]interp.Value, error) { return invals, nil })
-		a.RunInDefaultScope(`import "_test";`)
-	}
-	vals, err := a.Load("test", bytes.NewReader([]byte(code)))
-	assertNoErr(t, err)
-	return vals
-}
 
 func TestAdd(t *testing.T) {
 	vals := run(t, `
@@ -46,7 +16,7 @@ func TestAdd(t *testing.T) {
 		export x;`, nil)
 
 	assertTrue(t, len(vals) == 1)
-	assertTrue(t, vals["x"].Val.(*interp.ValNumber).Val.Cmp(big.NewRat(4, 1)) == 0)
+	assertNumEqual(t, vals["x"].Val, big.NewRat(4, 1))
 }
 
 func TestAdd2(t *testing.T) {
@@ -56,7 +26,7 @@ func TestAdd2(t *testing.T) {
 		export x;`, nil)
 
 	assertTrue(t, len(vals) == 1)
-	assertTrue(t, vals["x"].Val.(*interp.ValNumber).Val.Cmp(big.NewRat(4, 1)) == 0)
+	assertNumEqual(t, vals["x"].Val, big.NewRat(4, 1))
 }
 
 func TestSubproc(t *testing.T) {
@@ -81,10 +51,10 @@ func TestSubproc(t *testing.T) {
 
 		export r1, r2, r3`, map[string]interp.Value{"testcall": interp.ProcCB(testcall)})
 	assertTrue(t, len(vals) == 3)
-	assertTrue(t, vals["r1"].Val.(*interp.ValNumber).Val.Cmp(big.NewRat(300, 1)) == 0)
-	assertTrue(t, vals["r2"].Val.(*interp.ValNumber).Val.Cmp(big.NewRat(600, 1)) == 0)
-	assertTrue(t, vals["r3"].Val.(*interp.ValNumber).Val.Cmp(big.NewRat(1000, 1)) == 0)
+	assertNumEqual(t, vals["r1"].Val, big.NewRat(300, 1))
+	assertNumEqual(t, vals["r2"].Val, big.NewRat(600, 1))
+	assertNumEqual(t, vals["r3"].Val, big.NewRat(1000, 1))
 	assertTrue(t, len(testcalls) == 2)
-	assertTrue(t, testcalls[0].(*interp.ValNumber).Val.Cmp(big.NewRat(1200, 1)) == 0)
-	assertTrue(t, testcalls[1].(*interp.ValNumber).Val.Cmp(big.NewRat(2000, 1)) == 0)
+	assertNumEqual(t, testcalls[0], big.NewRat(1200, 1))
+	assertNumEqual(t, testcalls[1], big.NewRat(2000, 1))
 }
