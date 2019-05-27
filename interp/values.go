@@ -8,10 +8,7 @@ import (
 	"github.com/jtolds/pants2/lib/big"
 )
 
-type Value interface {
-	String() string
-	value()
-}
+type Value = ast.Value
 
 type ValNumber struct{ Val big.Rat }
 
@@ -48,7 +45,7 @@ func (p *UserProc) Call(t *ast.Token, args []Value) error {
 			"Expected %d arguments but got %d", len(p.args), len(args))
 	}
 	for _, arg := range p.args {
-		if d := p.scope.Lookup(arg.Token.Val); d != nil {
+		if d := lookupVar(p.scope, arg); d != nil {
 			return NewRuntimeError(arg.Token,
 				"Variable %v already defined on file %#v, line %d",
 				arg.Token.Val, d.Def.Filename, d.Def.Lineno)
@@ -102,7 +99,7 @@ func (f *UserFunc) Call(t *ast.Token, args []Value) (Value, error) {
 			"Expected %d arguments but got %d", len(f.args), len(args))
 	}
 	for _, arg := range f.args {
-		if d := f.scope.Lookup(arg.Token.Val); d != nil {
+		if d := lookupVar(f.scope, arg); d != nil {
 			return nil, NewRuntimeError(arg.Token,
 				"Variable %v already defined on file %#v, line %d",
 				arg.Token.Val, d.Def.Filename, d.Def.Lineno)

@@ -20,6 +20,7 @@ type Expr interface {
 type Var struct {
 	Token *Token
 	Expr  Expr
+	Depth int
 }
 
 func (v *Var) String() string { return v.Token.Val }
@@ -267,10 +268,11 @@ func (e *ExprBool) String() string {
 }
 
 type ExprOp struct {
-	Token *Token
-	Left  Expr
-	Op    *Token
-	Right Expr
+	Token  *Token
+	Left   Expr
+	Op     *Token
+	Right  Expr
+	Method func(t *Token, left, right Value) (Value, error)
 }
 
 func (e *ExprOp) String() string {
@@ -335,3 +337,7 @@ func (*ExprNot) expression()      {}
 func (*ExprIndex) expression()    {}
 func (*ExprFuncCall) expression() {}
 func (*ExprNegative) expression() {}
+
+type Value interface {
+	String() string
+}

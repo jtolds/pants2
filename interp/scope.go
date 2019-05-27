@@ -20,7 +20,8 @@ type Scope interface {
 	Flatten() Scope
 	Fork() Scope
 
-	Lookup(name string) *ValueCell
+	Lookup(name string) (vc *ValueCell, depth int)
+	LookupDepth(name string, depth int) *ValueCell
 	Define(name string, v *ValueCell)
 	Remove(name string)
 	Export(stmt *ast.StmtExport) error
@@ -49,13 +50,21 @@ func (f *ForkScope) Init(parent Scope) {
 	}
 }
 
-func (f *ForkScope) Lookup(name string) *ValueCell {
+func (f *ForkScope) Lookup(name string) (vc *ValueCell, depth int) {
 	if f.vars != nil {
 		if vc, exists := f.vars[name]; exists {
-			return vc
+			return vc, 0
 		}
 	}
-	return f.parent.Lookup(name)
+	vc, depth = f.parent.Lookup(name)
+	return vc, depth + 1
+}
+
+func (f *ForkScope) LookupDepth(name string, depth int) (vc *ValueCell) {
+	if depth > 0 {
+		return f.parent.LookupDepth(name, depth-1)
+	}
+	return f.vars[name]
 }
 
 func (f *ForkScope) Define(name string, v *ValueCell) {
@@ -116,7 +125,11 @@ func NewFlatScope(importer ModuleImporter) *FlatScope {
 	}
 }
 
-func (s *FlatScope) Lookup(name string) *ValueCell {
+func (s *FlatScope) Lookup(name string) (*ValueCell, int) {
+	return s.vars[name], 0
+}
+
+func (s *FlatScope) LookupDepth(name string, depth int) *ValueCell {
 	return s.vars[name]
 }
 
@@ -143,7 +156,7 @@ func (s *FlatScope) Export(stmt *ast.StmtExport) error {
 		}
 	}
 	for _, v := range stmt.Vars {
-		cell := s.Lookup(v.Token.Val)
+		cell := lookupVar(s, v)
 		if cell == nil {
 			return NewRuntimeError(v.Token,
 				"Variable %v not defined", v.Token.Val)

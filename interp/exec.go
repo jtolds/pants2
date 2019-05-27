@@ -16,9 +16,18 @@ func RunAll(s Scope, stmts []ast.Stmt) error {
 	return nil
 }
 
+func lookupVar(s Scope, v *ast.Var) *ValueCell {
+	if v.Depth > 0 {
+		return s.LookupDepth(v.Token.Val, v.Depth-1)
+	}
+	vc, depth := s.Lookup(v.Token.Val)
+	v.Depth = depth + 1
+	return vc
+}
+
 func runVar(s Scope, stmt *ast.StmtVar) error {
 	for _, v := range stmt.Vars {
-		if d := s.Lookup(v.Token.Val); d != nil {
+		if d := lookupVar(s, v); d != nil {
 			return NewRuntimeError(v.Token,
 				"Variable %v already defined on file %#v, line %d",
 				v.Token.Val, d.Def.Filename, d.Def.Lineno)
@@ -39,7 +48,7 @@ func runVar(s Scope, stmt *ast.StmtVar) error {
 }
 
 func runAssignment(s Scope, stmt *ast.StmtAssignment) error {
-	if d := s.Lookup(stmt.Lhs.Token.Val); d == nil {
+	if d := lookupVar(s, stmt.Lhs); d == nil {
 		return NewRuntimeError(stmt.Lhs.Token,
 			"Variable %v not defined", stmt.Lhs.Token.Val)
 	}
@@ -47,7 +56,7 @@ func runAssignment(s Scope, stmt *ast.StmtAssignment) error {
 	if err != nil {
 		return err
 	}
-	s.Lookup(stmt.Lhs.Token.Val).Val = val
+	lookupVar(s, stmt.Lhs).Val = val
 	return nil
 }
 
@@ -128,7 +137,7 @@ func runWhile(s Scope, stmt *ast.StmtWhile) error {
 }
 
 func runProcDef(s Scope, stmt *ast.StmtProcDef) error {
-	if d := s.Lookup(stmt.Name.Token.Val); d != nil {
+	if d := lookupVar(s, stmt.Name); d != nil {
 		return NewRuntimeError(stmt.Name.Token,
 			"Variable %v already defined on file %#v, line %d",
 			stmt.Name.Token.Val, d.Def.Filename, d.Def.Lineno)
@@ -136,7 +145,7 @@ func runProcDef(s Scope, stmt *ast.StmtProcDef) error {
 	s.Define(stmt.Name.Token.Val, &ValueCell{Def: stmt.Token.Line})
 	// the proc flattens the scope, but the scope it flatten needs the
 	// proc defined so recursion works
-	s.Lookup(stmt.Name.Token.Val).Val = &UserProc{
+	lookupVar(s, stmt.Name).Val = &UserProc{
 		def:   stmt.Token,
 		name:  stmt.Name.Token.Val,
 		scope: s.Flatten(),
@@ -147,7 +156,7 @@ func runProcDef(s Scope, stmt *ast.StmtProcDef) error {
 
 func runUndefine(s Scope, stmt *ast.StmtUndefine) error {
 	for _, v := range stmt.Vars {
-		if d := s.Lookup(v.Token.Val); d == nil {
+		if d := lookupVar(s, v); d == nil {
 			return NewRuntimeError(v.Token,
 				"Variable %v already not defined", v.Token.Val)
 		}
@@ -159,7 +168,7 @@ func runUndefine(s Scope, stmt *ast.StmtUndefine) error {
 }
 
 func runFuncDef(s Scope, stmt *ast.StmtFuncDef) error {
-	if d := s.Lookup(stmt.Name.Token.Val); d != nil {
+	if d := lookupVar(s, stmt.Name); d != nil {
 		return NewRuntimeError(stmt.Name.Token,
 			"Variable %v already defined on file %#v, line %d",
 			stmt.Name.Token.Val, d.Def.Filename, d.Def.Lineno)
@@ -167,7 +176,7 @@ func runFuncDef(s Scope, stmt *ast.StmtFuncDef) error {
 	s.Define(stmt.Name.Token.Val, &ValueCell{Def: stmt.Token.Line})
 	// the func flattens the scope, but the scope it flatten needs the
 	// func defined so recursion works
-	s.Lookup(stmt.Name.Token.Val).Val = &UserFunc{
+	lookupVar(s, stmt.Name).Val = &UserFunc{
 		def:   stmt.Token,
 		name:  stmt.Name.Token.Val,
 		scope: s.Flatten(),
@@ -249,8 +258,8 @@ func Run(s Scope, stmt ast.Stmt) error {
 }
 
 func evalVar(s Scope, expr *ast.ExprVar) (Value, error) {
+	rv := lookupVar(s, expr.Var)
 	name := expr.Var.Token.Val
-	rv := s.Lookup(name)
 	if rv == nil {
 		return nil, NewRuntimeError(expr.Token,
 			"Variable %v not defined", name)
@@ -274,24 +283,14 @@ func evalOp(s Scope, expr *ast.ExprOp) (Value, error) {
 	if err != nil {
 		return nil, err
 	}
-	if expr.Op.Type == "==" || expr.Op.Type == "!=" {
-		val := equalityTest(expr, left, right)
-		if expr.Op.Type == "!=" {
-			val = !val
+	if expr.Method == nil {
+		var found bool
+		expr.Method, found = operations[expr.Op.Type]
+		if !found {
+			return nil, unsupportedOp(expr.Token, expr.Op.Type, left, right)
 		}
-		return ValBool{Val: val}, nil
 	}
-	op, found := operations[opkey{
-		op:    expr.Op.Type,
-		left:  typename(left),
-		right: typename(right),
-	}]
-	if !found {
-		return nil, NewRuntimeError(expr.Token,
-			"unsupported operation: %s %s %s",
-			typename(left), expr.Op.Type, typename(right))
-	}
-	return op(expr.Token, left, right)
+	return expr.Method(expr.Token, left, right)
 }
 
 func evalFuncCall(s Scope, expr *ast.ExprFuncCall) (Value, error) {
